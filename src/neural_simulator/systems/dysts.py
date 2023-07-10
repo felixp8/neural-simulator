@@ -13,29 +13,13 @@ class DystsSystem(AutonomousSystem):
         params: dict = {}, 
         seed: Optional[int] = None,
     ):
-        super().__init__()
         self.system = getattr(dysts.flows, name)(**params)
         self.system.random_state = seed
-        self.rng = np.random.default_rng(seed=None)
-        self.n_dims = self.system.embedding_dimension
+        super().__init__(ndim=self.system.embedding_dimension, seed=seed)
 
     def seed(self, seed: Optional[int] = Non):
         self.system.random_state = seed
-        self.rng = np.random.default_rng(seed=None)
-
-    def sample_ics(
-        self,
-        ics: Optional[np.ndarray] = None,
-        n_trials: Optional[int] = None,
-        dist: Optional[str] = None,
-        dist_params: dict = {},
-    ):
-        if ics is not None:
-            return ics
-        assert n_trials is not None, "If `ics = None`, `n_trials` must be provided"
-        assert dist is not None, "If `ics = None`, `dist` must be provided"
-        ics = getattr(self.rng, dist)(size=(n_trials, self.n_dims), **dist_params)
-        return ics
+        super().seed(seed)
 
     def simulate_system(
         self,
