@@ -1,17 +1,17 @@
 import numpy as np
 import pandas as pd
-import gym
+import gymnasium as gym
 import ivy
 import itertools
 
-from .base import System
+from .base import System, CoupledSystem
 
 
 def sample_dict(
     sample_space: dict,
     overrides: dict = {},
     rng: np.random.Generator = None,
-):
+) -> dict:
     if rng is None:
         rng = np.random.default_rng()
     sampled_dict = {}
@@ -31,7 +31,7 @@ def sample_trial_params(
     n_trials: int,
     stratified: bool,
     rng: np.random.Generator = None,
-):
+) -> list[dict]:
     if rng is None:
         rng = np.random.default_rng()
     trial_params = []
@@ -54,62 +54,39 @@ def sample_trial_params(
     return trial_params
 
 
-class RNNGymSystem(System):
+class EnvSystem(CoupledSystem):
+    """Dynamical system interacting with a Gym environment"""
     def __init__(
         self, 
-        model,
+        system,
         env: gym.Env,
+        n_dim: int,
         seed: Optional[int] = None,
-    ):
-        super().__init__()
-        self.model = model
+    ) -> None:
+        super().__init__(n_dim=n_dim, n_input_dim=env.observation_space.n, seed=seed)
         self.env = env
         self.env.seed(seed)
-        self.rng = np.random.default_rng(seed)
-
-    def sample_trajectories(self, ic_kwargs={}, trial_kwargs={}, simulation_kwargs={}):
-        ics = self.sample_ics(**ic_kwargs)
-        trial_params = self.sample_trials(**trial_kwargs)
-        trajectories, inputs = self.simulate_system(ics, trial_params)
-        trial_info = pd.DataFrame(trial_params)
-        for i in range(ics.shape[1]):
-            trial_info[f'ic_dim{i}'] = ics[:, i]
-        return trajectories, trial_info, inputs
-
-    def sample_ics(
-        self,
-        ics: Optional[np.ndarray] = None,
-        n_trials: Optional[int] = None,
-        dist: Optional[str] = None,
-        dist_params: dict = {},
-    ):
-        if ics is not None:
-            return ics
-        assert n_trials is not None, "If `ics = None`, `n_trials` must be provided"
-        assert dist is not None, "If `ics = None`, `dist` must be provided"
-        ics = getattr(self.rng, dist)(size=(n_trials, self.n_dims), **dist_params)
-        return ics
 
     def sample_trials(
         self,
         n_trials: int,
         sample_space: dict = {},
         stratified: bool = False,
-    ):
+    ) -> list[dict]:
         # sample space is dict of dicts like so:
         # {'trial_info_field': {'dist': 'distribution_name', 'dist_params': 'distribution_params'}}
         # where 'distribution_name' is some random distribution (e.g. normal, poisson, discrete)
         # for most distributions, `distribution_params` is the numpy args for that distribution
         # for discrete, `distribution_params` is a list of possible values. not supporting weighted sampling right now
         if not sample_space:
-            return None
+            return [{}] * n_trials
         return sample_trial_params(sample_space=sample_space, n_trials=n_trials, stratified=stratified)
 
     def simulate_system(
         self,
         ics: np.ndarray,
         trial_params: list[dict],
-    ):
+    ) -> tuple[ivy.Array, ivy.Array]:
         assert ics.shape[0] == len(trial_params)
         trajectories = []
         inputs = []
@@ -123,17 +100,19 @@ class RNNGymSystem(System):
                 state, obs, done = self.step(state)
                 trajectory.append(state)
                 obs_list.append(obs)
-            trajectory = ivy.stack(trajectory, axis=0).to_numpy()
-            obs_list = ivy.stack(obs_list, axis=0).to_numpy()
+            trajectory = ivy.stack(trajectory, axis=0)
+            obs_list = ivy.stack(obs_list, axis=0)
             trajectories.append(trajectory)
             inputs.append(obs_list)
-        trajectories = np.stack(trajectories, axis=0)
-        inputs = np.stack(inputs, axis=0)
+        trajectories = ivy.stack(trajectories, axis=0)
+        inputs = ivy.stack(inputs, axis=0)
         return trajectories, inputs
 
-    def step(self, state: ivy.Array):
+    def step(self, state: ivy.Array) -> tuple[ivy.Array, ivy.Array, bool]:
         input = ivy.array(self.obs)
-        state, output = self.model(state, input)
-        action = ivy.argmax(output)
+        state, action = self.system_step(state, input)
         self.obs, reward, term, trunc, info = self.env.step(action)
         return state, input, (term or trunc)
+
+    def system_step(self, *args, **kwargs):
+        raise NotImplementedError
