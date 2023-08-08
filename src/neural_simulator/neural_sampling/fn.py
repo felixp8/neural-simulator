@@ -28,7 +28,7 @@ def softplus(
     return scale / beta * np.log(1 + np.exp(beta * arr + offset))
 
 def sigmoid(
-    arr: np.ndarray
+    arr: np.ndarray,
     vscale: Union[float, np.ndarray] = 1., # float or (D,)
     hscale: Union[float, np.ndarray] = 1., # float or (D,)
     offset: Union[float, np.ndarray] = 0., # float or (D,)
@@ -43,7 +43,7 @@ def lin_nonlin(
     proj_weight_params: dict = {},
     nonlinearity: Literal["relu", "exp", "softplus", "sigmoid"] = "exp",
     nonlinearity_params: dict = {},
-    noise_dist: Literal["poisson", "normal"],
+    noise_dist: Literal["poisson", "normal"] = "poisson",
     noise_params: dict = {},
     sort_dims: bool = False,
     standardize: bool = False,

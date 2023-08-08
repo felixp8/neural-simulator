@@ -3,6 +3,7 @@ import pandas as pd
 import gymnasium as gym
 import ivy
 import itertools
+from typing import Optional
 
 from .base import System, CoupledSystem
 

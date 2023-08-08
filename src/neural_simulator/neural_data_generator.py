@@ -1,9 +1,7 @@
 import numpy as np
-import sklearn.decomposition as skdecomp
-import sklearn.manifold as skman
-from typing import Optional, Union
+from typing import Optional, Union, Literal
 
-from .system.base import System
+from .systems.base import System
 from .utils import (
     get_dim_reduction_function, 
     get_manifold_embedding_function, 
@@ -31,9 +29,9 @@ class NeuralDataGenerator: # TODO: unsure if this really warrants its own class
         dim_reduction_kwargs: dict = {},
         subsampled_dim: Optional[int] = None,
         manifold_embedding: Optional[str] = None,
-        manifold_kwargs: dict = {},
+        manifold_embedding_kwargs: dict = {},
         # TODO: want to figure out how to span multiple data modalities here
-        neural_sampling: Literal["lin-nonlin", "depasquale"] = "lin-nonlin", 
+        neural_sampling: Literal["lin_nonlin", "depasquale"] = "lin_nonlin", 
         neural_sampling_kwargs: dict = {},
         nwb_export: bool = False,
     ):
@@ -41,19 +39,19 @@ class NeuralDataGenerator: # TODO: unsure if this really warrants its own class
         trajectories, trial_info, inputs = self.system.sample_trajectories(**trajectory_kwargs) # traj: B x T x D
         # dim reduce if desired
         if reduced_dim is not None:
-            dim_reduction_fn = get_dim_reduction_fn(reduced_dim, dim_reduction_method, **dim_reduction_kwargs)
+            dim_reduction_fn = get_dim_reduction_function(reduced_dim, dim_reduction_method, dim_reduction_kwargs)
             trajectories = dim_reduction_fn(trajectories)
         # partially observe dimensions if desired
         if subsampled_dim is not None:
             if subsampled_dim < trajectories.shape[-1]:
-                subsampled_idx = rng.choice(trajectories.shape[-1], size=subsampled_dim, replace=False)
+                subsampled_idx = self.rng.choice(trajectories.shape[-1], size=subsampled_dim, replace=False)
                 trajectories = trajectories[:,:,subsampled_idx]
         # embed latents in nonlinear manifold if desired
         if manifold_embedding is not None:
-            manifold_embedding_fn = get_manifold_embedding_function(manifold_embedding, **manifold_kwargs)
+            manifold_embedding_fn = get_manifold_embedding_function(manifold_embedding, manifold_embedding_kwargs)
             trajectories = manifold_embedding_fn(trajectories)
         # finally, sample neural data
-        neural_sampling_fn = get_neural_sampling_function(neural_sampling, **neural_sampling_kwargs)
+        neural_sampling_fn = get_neural_sampling_function(neural_sampling, neural_sampling_kwargs)
         neural_data = neural_sampling_fn(trajectories) # could return dict with keys like 'rates', 'spikes' mapping to tensors?
         # export to NWB if desired
         if nwb_export:

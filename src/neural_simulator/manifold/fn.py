@@ -15,12 +15,13 @@ def parabolic3d(
 ):
     # embeds 2d coordinates in 3d on a parabolic surface
     # just an example for what kind of things might be in this file
-    assert points.shape[-1] = 2
+    assert points.shape[-1] == 2
+    if rotate:
+        r = special_ortho_group.rvs(dim=2, random_state=seed)
+        points = points @ r
+    z = x_scale * np.square(points[..., 0] - x_center) + y_scale * np.square(points[..., 1] - y_center)
     embedded = np.concatenate([
         points,
-        x_scale * np.square(points[..., 0] - x_center) + y_scale * np.square(points[..., 1] - y_center),
+        z[..., None],
     ], axis=-1)
-    if rotate:
-        r = special_ortho_group.rvs(dim=3, seed=seed)
-        embedded = embedded @ r
     return embedded

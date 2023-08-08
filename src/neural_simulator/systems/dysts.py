@@ -1,5 +1,5 @@
 import numpy as np
-import dysts
+from dysts import flows
 from typing import Optional
 
 from .base import System, AutonomousSystem
@@ -13,11 +13,11 @@ class DystsSystem(AutonomousSystem):
         params: dict = {}, 
         seed: Optional[int] = None,
     ):
-        self.system = getattr(dysts.flows, name)(**params)
+        self.system = getattr(flows, name)(**params)
         self.system.random_state = seed
-        super().__init__(ndim=self.system.embedding_dimension, seed=seed)
+        super().__init__(n_dim=self.system.embedding_dimension, seed=seed)
 
-    def seed(self, seed: Optional[int] = Non):
+    def seed(self, seed: Optional[int] = None):
         self.system.random_state = seed
         super().seed(seed)
 
