@@ -21,9 +21,9 @@ def sample_dict(
             sampled_dict[key] = overrides[key]
         else:
             if val['dist'] == 'discrete':
-                sampled_dict[key] = rng.choice()
+                sampled_dict[key] = rng.choice(**val['dist_params'])
             else:
-                sampled_dict[key] = getattr(rng, val['dist'])(**val['distribution_params'])
+                sampled_dict[key] = getattr(rng, val['dist'])(**val['dist_params'])
     return sampled_dict
 
 

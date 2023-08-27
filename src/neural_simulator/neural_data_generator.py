@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Optional, Union, Literal
 
-from .systems.base import System
+from .systems.base import System, TrajectoryBatch
 from .utils import (
     get_dim_reduction_function, 
     get_manifold_embedding_function, 
@@ -15,10 +15,12 @@ class NeuralDataGenerator: # TODO: unsure if this really warrants its own class
         super().__init__()
         self.system = system
         self.random_seed = seed
+        self.system.seed(seed)
         self.rng = np.random.default_rng(self.random_seed)
 
     def seed(self, seed=None):
         self.random_seed = seed
+        self.system.seed(seed)
         self.rng = np.random.default_rng(self.random_seed)
 
     def generate_dataset(
@@ -36,7 +38,8 @@ class NeuralDataGenerator: # TODO: unsure if this really warrants its own class
         nwb_export: bool = False,
     ):
         # make latent trajectories
-        trajectories, trial_info, inputs = self.system.sample_trajectories(**trajectory_kwargs) # traj: B x T x D
+        trajectory_batch = self.system.sample_trajectories(**trajectory_kwargs) # traj: B x T x D
+        trajectories = trajectory_batch.trajectories
         # dim reduce if desired
         if reduced_dim is not None:
             dim_reduction_fn = get_dim_reduction_function(reduced_dim, dim_reduction_method, dim_reduction_kwargs)
@@ -53,9 +56,18 @@ class NeuralDataGenerator: # TODO: unsure if this really warrants its own class
         # finally, sample neural data
         neural_sampling_fn = get_neural_sampling_function(neural_sampling, neural_sampling_kwargs)
         neural_data = neural_sampling_fn(trajectories) # could return dict with keys like 'rates', 'spikes' mapping to tensors?
+        trajectory_batch = TrajectoryBatch(
+            trajectories=trajectory_batch.trajectories,
+            trial_info=trajectory_batch.trial_info,
+            inputs=trajectory_batch.inputs,
+            outputs=trajectory_batch.outputs,
+            targets=trajectory_batch.targets,
+            other=trajectory_batch.other,
+            neural_data=neural_data,
+        ) # TODO: decide on a good data format
         # export to NWB if desired
         if nwb_export:
-            export_to_nwb(neural_data, trajectories, trial_info, inputs)
-        return neural_data, trajectories, trial_info, inputs # TODO: decide on a good data format
+            export_to_nwb(trajectory_batch)
+        return trajectory_batch
 
     # TODO: think about making torch/tf dataloaders

@@ -1,23 +1,22 @@
 import numpy as np
 
 from neural_simulator.neural_data_generator import NeuralDataGenerator
-from neural_simulator.systems.dysts import DystsSystem
+from neural_simulator.systems.base import AutonomousSystem
+from neural_simulator.systems.models.dysts import DystsModel
 
 
 seed = 0
 
 datagen = NeuralDataGenerator(
-    system=DystsSystem(
-        name="Lorenz", 
-        params={},
-        seed=seed,
+    system=AutonomousSystem(
+        model=DystsModel(name="Lorenz", params={}),
     ),
     seed=seed,
 )
 
 trajectory_kwargs = dict(
+    n_traj=500,
     ic_kwargs=dict(
-        n_trials=500,
         dist="normal",
         dist_params=dict(
             loc=np.array([0., 0., 20]),
