@@ -19,26 +19,18 @@ except:
 if HAS_GYMNASIUM and HAS_LEGACY:
     EnvType = Union[gym.Env, gymnasium.Env]
 elif HAS_GYMNASIUM:
-    EnvType = Union[gymnasium.Env]
+    EnvType = gymnasium.Env
 elif HAS_LEGACY:
-    EnvType = Union[gym.Env]
+    EnvType = gym.Env
 
 assert HAS_GYMNASIUM or HAS_LEGACY, "At least one of Gym or Gymnasium must be installed"
 
 
-# TODO: use VectorListInfo, except it doesn't handle the option arg in reset?
 def convert_df_to_dict(trial_info: pd.DataFrame):
     vector_info = trial_info.to_dict(orient='list')
     for key in vector_info.keys():
         vector_info[key] = np.array(vector_info[key])
     return vector_info
-
-def convert_dict_to_list(vector_info: dict[np.ndarray]):
-    trial_info = []
-    info_keys = list(vector_info.keys())
-    for data in zip(*list(vector_info.values())):
-        trial_info.append(dict(zip(info_keys, data)))
-    return trial_info
 
 
 class GymEnvironment(Environment):
@@ -84,9 +76,14 @@ class GymEnvironment(Environment):
             else:
                 VectorEnv = gymnasium.vector.AsyncVectorEnv if self.asynchronous else gymnasium.vector.SyncVectorEnv
             self.batch_envs = VectorEnv([lambda: copy.deepcopy(self.env) for _ in range(len(trial_info))])
-            obs, infos = self.batch_envs.reset(options=convert_df_to_dict(trial_info))
-            infos['done'] = np.full((len(trial_info),), False)
-            return pd.DataFrame(infos), obs, None, None
+            obs, env_infos = self.batch_envs.reset(options=convert_df_to_dict(trial_info))
+            info = {}
+            other = {}
+            for field in self.info_fields:
+                if field in env_infos:
+                    info[field] = env_infos[field]
+            return pd.DataFrame(info), obs, other, None
+        
         obs, reward, term, trunc, env_infos = self.batch_envs.step(actions)
         info = {'done': np.any([term, trunc] + [env_infos.get(key) for key in self.done_fields], axis=0)}
         other = {}

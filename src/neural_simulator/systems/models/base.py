@@ -5,14 +5,18 @@ from typing import Optional, Union, Callable, Any
 class Model:
     """Base class for all dynamics models"""
 
-    def __init__(self, n_dim: int, seed=None):
+    def __init__(self, n_dim: int, max_batch_size: Optional[int] = None, seed: Optional[Union[int, np.random.Generator]] = None):
         super().__init__()
         self.n_dim = n_dim
-        self.rng = np.random.default_rng(seed)
+        self.max_batch_size = max_batch_size
+        self.seed(seed)
     
-    def seed(self, seed=None) -> None:
-        self.rng = np.random.default_rng(seed)
-
+    def seed(self, seed: Optional[Union[int, np.random.Generator]] = None):
+        if isinstance(seed, np.random.Generator):
+            self.rng = seed
+        else:
+            self.rng = np.random.default_rng(seed)
+    
     def sample_ics(
         self,
         ics: Optional[np.ndarray] = None,

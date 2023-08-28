@@ -1,6 +1,6 @@
 import numpy as np
 from dysts import flows
-from typing import Optional, Union, Callable, Any
+from typing import Optional, Union, Any
 from .base import Model
 
 
@@ -32,7 +32,7 @@ class DystsModel(Model):
         postprocess: bool = True,
         noise: float = 0.0,
         inputs: Optional[Any] = None,
-    ) -> tuple[np.ndarray, Union[np.ndarray, None]]:
+    ) -> tuple[np.ndarray, Union[np.ndarray, None], Union[Any, None]]:
         """Simulate trajectories from dysts dynamical system
 
         Parameters
@@ -85,4 +85,4 @@ class DystsModel(Model):
             )[burn_in:]
             trajectories.append(traj)
         trajectories = np.stack(trajectories, axis=0)
-        return trajectories, None
+        return trajectories, None, None

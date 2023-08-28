@@ -3,43 +3,29 @@ import pandas as pd
 import itertools
 from typing import Optional, Union, Callable, Any
 
-
-def sample_dict( # TODO: make this a separate class or put it in utils or something
-    sample_space: dict,
-    overrides: dict = {},
-    rng: np.random.Generator = None,
-) -> dict:
-    if rng is None:
-        rng = np.random.default_rng()
-    sampled_dict = {}
-    for key, val in sample_space:
-        if key in overrides:
-            sampled_dict[key] = overrides[key]
-        else:
-            if val['dist'] == 'discrete':
-                sampled_dict[key] = rng.choice(**val['dist_params'])
-            else:
-                sampled_dict[key] = getattr(rng, val['dist'])(**val['dist_params'])
-    return sampled_dict
+from ...utils.trial_sampling import SampleSpace
 
 
 class Environment:
     """Environment base class"""
 
-    def __init__(self, n_dim: int, max_batch_size: Optional[int] = None, seed=None):
+    def __init__(self, n_dim: int, max_batch_size: Optional[int] = None, seed: Optional[Union[int, np.random.Generator]] = None):
         super().__init__()
         self.n_dim = n_dim
         self.max_batch_size = max_batch_size
-        self.rng = np.random.default_rng(seed)
+        self.seed(seed)
 
-    def seed(self, seed=None) -> None:
-        self.rng = np.random.default_rng(seed)
+    def seed(self, seed: Optional[Union[int, np.random.Generator]] = None):
+        if isinstance(seed, np.random.Generator):
+            self.rng = seed
+        else:
+            self.rng = np.random.default_rng(seed)
 
     def sample_trial_info(
         self, 
         trial_info: Optional[pd.DataFrame] = None,
         n: Optional[int] = None,
-        sample_space: dict = {},
+        sample_space: Union[SampleSpace, dict] = {},
         stratified: bool = False,
         *args, 
         **kwargs,
@@ -53,13 +39,9 @@ class Environment:
             just returns the provided trial info
         n : int, optional
             Number of trials to sample
-        sample_space : dict
-            Dict of dicts specifying the space to sample
-            trial conditions from. The upper level dict
-            maps trial info field names to sampling parameter
-            dicts. Sampling parameter dicts contain keys
-            'dist' for sampling distribution name and 
-            'dist_params' for distribution parameters
+        sample_space : dict or SampleSpace
+            Dict or object specifying the space to sample
+            trial conditions from. see `utils.trial_sampling`
         stratified : bool, default: False
             Whether to perform stratified sampling, to
             guarantee that conditions are roughly equally
@@ -73,24 +55,10 @@ class Environment:
         """
         if trial_info is not None:
             return trial_info
-        trial_info = []
-        if stratified: # only do stratified sampling over discrete trial info fields
-            discrete_keys = [key for key, val in sample_space.items() if val['dist'] == 'discrete']
-            discrete_val_counts = [len(sample_space[key]['dist_params']['a']) for key in discrete_keys]
-            n_combinations = np.prod(discrete_val_counts)
-            trials_per_comb = np.full((n_combinations,), n)
-            trials_per_comb = trials_per_comb // n_combinations + (np.arange(n_combinations) < (n % n_combinations))
-            change_idx = np.roll(np.cumsum(trials_per_comb))
-            change_idx[0] = 0
-            comb_generator = itertools.product(*[sample_space[key]['dist_params'] for key in discrete_keys])
-        overrides = {}
-        for i in range(n):
-            if stratified:
-                if i in change_idx:
-                    overrides = dict(zip(discrete_keys, next(comb_generator)))
-            trial_info.append(sample_dict(sample_space, overrides, self.rng))
-        trial_info = [trial_info[i] for i in self.rng.permutation(n)]
-        return pd.DataFrame(trial_info)
+        if isinstance(sample_space, dict):
+            sample_space = SampleSpace(distributions=sample_space, seed=self.rng)
+        trial_info = sample_space.sample(n=n, stratified=stratified)
+        return pd.DataFrame(trial_info, index=np.arange(n))
     
     def sample_inputs(
         self, 
@@ -99,7 +67,7 @@ class Environment:
         n: Optional[int] = None,
         *args, 
         **kwargs,
-    ) -> tuple[pd.DataFrame, np.ndarray, dict[str, np.ndarray], Any]:
+    ) -> tuple[pd.DataFrame, np.ndarray, dict[str, np.ndarray]]:
         """Sample time-varying inputs to the dynamics model
 
         Returns
@@ -120,7 +88,7 @@ class Environment:
         """
         if inputs is not None:
             if trial_info is None:
-                trial_info = [{} for _ in range(len(inputs))]
+                trial_info = pd.DataFrame([{} for _ in range(len(inputs))])
             return trial_info, inputs, None
         raise NotImplementedError
 

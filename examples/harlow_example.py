@@ -4,10 +4,12 @@ sys.path.insert(1, '/home/fpei2/learning/ttrnn/')
 import numpy as np
 from typing import Optional, Any
 
-from neural_simulator.neural_data_generator import NeuralDataGenerator
+from neural_simulator.core import NeuralDataGenerator
 from neural_simulator.systems.base import UncoupledSystem, CoupledSystem
 from neural_simulator.systems.models.base import Model
 from neural_simulator.systems.envs.gym import GymEnvironment
+from neural_simulator.embedding.pca import PCA
+from neural_simulator.synthetic_data.lin_nonlin import LinearNonlinearPoisson
 
 import torch
 
@@ -89,8 +91,27 @@ system = CoupledSystem(
     seed=seed,
 )
 
+embedding = PCA(n_components=10, seed=seed)
+data_sampler = LinearNonlinearPoisson(
+    input_dim=10,
+    output_dim=30,
+    proj_weight_dist="uniform",
+    proj_weight_params=dict(
+        low=-1.0,
+        high=1.0,
+    ),
+    nonlinearity="exp",
+    nonlinearity_params=dict(),
+    sort_dims=True,
+    standardize=True,
+    clip_val=5,
+    seed=seed,
+)
+
 datagen = NeuralDataGenerator(
     system=system,
+    data_sampler=data_sampler,
+    embedding=embedding,
     seed=seed,
 )
 
@@ -106,36 +127,8 @@ trajectory_kwargs = dict(
     simulation_kwargs=dict(),
 )
 
-neural_sampling_kwargs = dict(
-    projection_dim=30,
-    proj_weight_dist="uniform",
-    proj_weight_params=dict(
-        low=-1.0,
-        high=1.0,
-    ),
-    nonlinearity="exp",
-    nonlinearity_params=dict(),
-    noise_dist="poisson",
-    noise_params=dict(),
-    sort_dims=True,
-    standardize=True,
-    seed=seed,
-)
-
-manifold_embedding_kwargs = dict(
-    x_scale=1.0,
-    y_scale=2.0,
-    x_center=0.0,
-    y_center=0.0,
-    rotate=True,
-    seed=seed,
-)
-
 output = datagen.generate_dataset(
     trajectory_kwargs=trajectory_kwargs,
-    subsampled_dim=2,
-    manifold_embedding="parabolic3d",
-    manifold_embedding_kwargs=manifold_embedding_kwargs,
-    neural_sampling="lin_nonlin",
-    neural_sampling_kwargs=neural_sampling_kwargs,
 )
+
+import pdb; pdb.set_trace()

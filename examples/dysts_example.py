@@ -1,8 +1,9 @@
 import numpy as np
 
-from neural_simulator.neural_data_generator import NeuralDataGenerator
+from neural_simulator.core import NeuralDataGenerator
 from neural_simulator.systems.base import AutonomousSystem
 from neural_simulator.systems.models.dysts import DystsModel
+from neural_simulator.synthetic_data.lin_nonlin import LinearNonlinearPoisson
 
 
 seed = 0
@@ -10,6 +11,22 @@ seed = 0
 datagen = NeuralDataGenerator(
     system=AutonomousSystem(
         model=DystsModel(name="Lorenz", params={}),
+    ),
+    data_sampler=LinearNonlinearPoisson(
+        input_dim=3,
+        output_dim=30,
+        proj_weight_dist="uniform",
+        proj_weight_params=dict(
+            low=-1.0,
+            high=1.0,
+        ),
+        nonlinearity="exp",
+        nonlinearity_params=dict(
+            offset=-3.0,
+        ),
+        sort_dims=True,
+        standardize=True,
+        clip_val=5,
     ),
     seed=seed,
 )
@@ -31,36 +48,6 @@ trajectory_kwargs = dict(
     )
 )
 
-neural_sampling_kwargs = dict(
-    projection_dim=30,
-    proj_weight_dist="uniform",
-    proj_weight_params=dict(
-        low=-1.0,
-        high=1.0,
-    ),
-    nonlinearity="exp",
-    nonlinearity_params=dict(),
-    noise_dist="poisson",
-    noise_params=dict(),
-    sort_dims=True,
-    standardize=True,
-    seed=seed,
-)
-
-manifold_embedding_kwargs = dict(
-    x_scale=1.0,
-    y_scale=2.0,
-    x_center=0.0,
-    y_center=0.0,
-    rotate=True,
-    seed=seed,
-)
-
 output = datagen.generate_dataset(
     trajectory_kwargs=trajectory_kwargs,
-    subsampled_dim=2,
-    manifold_embedding="parabolic3d",
-    manifold_embedding_kwargs=manifold_embedding_kwargs,
-    neural_sampling="lin_nonlin",
-    neural_sampling_kwargs=neural_sampling_kwargs,
 )
