@@ -46,7 +46,6 @@ class GymEnvironment(Environment):
         asynchronous=False,
     ):
         super().__init__(
-            n_dim=env.observation_space.shape[0],
             seed=seed,
             max_batch_size=max_batch_size,
         )
@@ -84,6 +83,7 @@ class GymEnvironment(Environment):
                     info[field] = env_infos[field]
             return pd.DataFrame(info), obs, other, None
         
+        assert self.batch_envs is not None, f"You must initialize the envs by first passing in trial info"
         obs, reward, term, trunc, env_infos = self.batch_envs.step(actions)
         info = {'done': np.any([term, trunc] + [env_infos.get(key) for key in self.done_fields], axis=0)}
         other = {}

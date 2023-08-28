@@ -4,12 +4,12 @@ sys.path.insert(1, '/home/fpei2/learning/ttrnn/')
 import numpy as np
 from typing import Optional, Any
 
-from neural_simulator.core import NeuralDataGenerator
-from neural_simulator.systems.base import UncoupledSystem, CoupledSystem
-from neural_simulator.systems.models.base import Model
-from neural_simulator.systems.envs.gym import GymEnvironment
-from neural_simulator.embedding.pca import PCA
-from neural_simulator.synthetic_data.lin_nonlin import LinearNonlinearPoisson
+from synergen.core import NeuralDataGenerator
+from synergen.systems.base import UncoupledSystem, CoupledSystem
+from synergen.systems.models.base import Model
+from synergen.systems.envs.gym import GymEnvironment
+from synergen.embedding.pca import PCA
+from synergen.synthetic_data.lin_nonlin import LinearNonlinearPoisson
 
 import torch
 

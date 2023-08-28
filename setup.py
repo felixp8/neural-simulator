@@ -8,11 +8,11 @@ with open("requirements.txt") as file:
     requirements = file.read().splitlines()
 
 setup(
-    name="neural_simulator",
+    name="synergen",
     author="Felix Pei",
     author_email="felp8484@gmail.com",
     description="simulates neural data from dynamical systems",
-    url="https://github.com/felixp8/neural-simulator",
+    url="https://github.com/felixp8/synergen",
     install_requires=requirements,
     packages=find_packages(where="src"),
     package_dir={"": "src"},

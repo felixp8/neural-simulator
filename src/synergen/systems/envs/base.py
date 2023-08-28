@@ -9,7 +9,7 @@ from ...utils.trial_sampling import SampleSpace
 class Environment:
     """Environment base class"""
 
-    def __init__(self, n_dim: int, max_batch_size: Optional[int] = None, seed: Optional[Union[int, np.random.Generator]] = None):
+    def __init__(self, max_batch_size: Optional[int] = None, seed: Optional[Union[int, np.random.Generator]] = None):
         super().__init__()
         self.n_dim = n_dim
         self.max_batch_size = max_batch_size

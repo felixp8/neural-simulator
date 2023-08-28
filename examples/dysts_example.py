@@ -1,9 +1,9 @@
 import numpy as np
 
-from neural_simulator.core import NeuralDataGenerator
-from neural_simulator.systems.base import AutonomousSystem
-from neural_simulator.systems.models.dysts import DystsModel
-from neural_simulator.synthetic_data.lin_nonlin import LinearNonlinearPoisson
+from synergen.core import NeuralDataGenerator
+from synergen.systems.base import AutonomousSystem
+from synergen.systems.models.dysts import DystsModel
+from synergen.synthetic_data.lin_nonlin import LinearNonlinearPoisson
 
 
 seed = 0
