@@ -9,9 +9,12 @@ from ...utils.trial_sampling import SampleSpace
 class Environment:
     """Environment base class"""
 
-    def __init__(self, max_batch_size: Optional[int] = None, seed: Optional[Union[int, np.random.Generator]] = None):
+    def __init__(
+        self,
+        max_batch_size: Optional[int] = None,
+        seed: Optional[Union[int, np.random.Generator]] = None,
+    ):
         super().__init__()
-        self.n_dim = n_dim
         self.max_batch_size = max_batch_size
         self.seed(seed)
 
@@ -22,12 +25,12 @@ class Environment:
             self.rng = np.random.default_rng(seed)
 
     def sample_trial_info(
-        self, 
+        self,
         trial_info: Optional[pd.DataFrame] = None,
         n: Optional[int] = None,
         sample_space: Union[SampleSpace, dict] = {},
         stratified: bool = False,
-        *args, 
+        *args,
         **kwargs,
     ) -> pd.DataFrame:
         """Sample trial conditions to generate trials from
@@ -59,13 +62,13 @@ class Environment:
             sample_space = SampleSpace(distributions=sample_space, seed=self.rng)
         trial_info = sample_space.sample(n=n, stratified=stratified)
         return pd.DataFrame(trial_info, index=np.arange(n))
-    
+
     def sample_inputs(
-        self, 
+        self,
         trial_info: Optional[pd.DataFrame] = None,
         inputs: Optional[np.ndarray] = None,
         n: Optional[int] = None,
-        *args, 
+        *args,
         **kwargs,
     ) -> tuple[pd.DataFrame, np.ndarray, dict[str, np.ndarray]]:
         """Sample time-varying inputs to the dynamics model
@@ -76,12 +79,12 @@ class Environment:
             Dataframe where each row corresponds to a trial
             to simulate
         inputs : np.ndarray
-            Sampled inputs to dynamics model, with 
+            Sampled inputs to dynamics model, with
             shape (B,T,I) where B is batch size/trial
             count, T is number of timesteps, and I is
             input dimensionality
         other : dict of np.ndarray
-            Optional additional information about the 
+            Optional additional information about the
             environment that is not input to the dynamics
             model. The dict should map name of the field
             to a (B,T,D) array
@@ -93,12 +96,12 @@ class Environment:
         raise NotImplementedError
 
     def simulate(
-        self, 
+        self,
         trial_info: Optional[pd.DataFrame] = None,
         actions: Optional[np.ndarray] = None,
         env_state: Optional[Any] = None,
-        *args, 
-        **kwargs
+        *args,
+        **kwargs,
     ) -> tuple[pd.DataFrame, np.ndarray, dict[str, np.ndarray], Any]:
         """Simulate the environment forward in time,
         given trial info to initialize the environment
@@ -110,12 +113,12 @@ class Environment:
             If provided, should re-initialize the environment(s)
             to match the sampled trial information
         actions : np.ndarray, optional
-            If provided, should be a (B,T,I) array of 
+            If provided, should be a (B,T,I) array of
             actions on the environment
         env_state : any, optional
             Any state information about the env that
             is useful to provide
-        
+
         Returns
         -------
         info : pd.DataFrame
@@ -127,8 +130,8 @@ class Environment:
             B is the batch size/trial count, T is simulation length,
             and I is the input dimensionality
         other : dict of np.ndarray
-            Any other time-varying state information about 
-            the environment that should not be passed to the 
+            Any other time-varying state information about
+            the environment that should not be passed to the
             model, such as reward in non-RL settings. The
             dict should map name of the field to a (B,T,D) array
         env_state : any, optional

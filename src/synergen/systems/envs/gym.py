@@ -7,11 +7,13 @@ from .base import Environment
 
 try:
     import gymnasium
+
     HAS_GYMNASIUM = True
 except:
     HAS_GYMNASIUM = False
 try:
     import gym
+
     HAS_LEGACY = True
 except:
     HAS_LEGACY = False
@@ -27,7 +29,7 @@ assert HAS_GYMNASIUM or HAS_LEGACY, "At least one of Gym or Gymnasium must be in
 
 
 def convert_df_to_dict(trial_info: pd.DataFrame):
-    vector_info = trial_info.to_dict(orient='list')
+    vector_info = trial_info.to_dict(orient="list")
     for key in vector_info.keys():
         vector_info[key] = np.array(vector_info[key])
     return vector_info
@@ -35,10 +37,10 @@ def convert_df_to_dict(trial_info: pd.DataFrame):
 
 class GymEnvironment(Environment):
     def __init__(
-        self, 
-        env: EnvType, 
-        max_batch_size: int = 1, 
-        info_fields: list[str] = [], 
+        self,
+        env: EnvType,
+        max_batch_size: int = 1,
+        info_fields: list[str] = [],
         other_fields: list[str] = [],
         done_fields: list[str] = [],
         seed=None,
@@ -63,7 +65,7 @@ class GymEnvironment(Environment):
         self.asynchronous = asynchronous
 
     def simulate(
-        self, 
+        self,
         trial_info: Optional[pd.DataFrame] = None,
         actions: Optional[Union[int, np.ndarray]] = None,
         env_state: Optional[Any] = None,
@@ -71,24 +73,45 @@ class GymEnvironment(Environment):
         if trial_info is not None:
             self.batch_envs = None
             if self.legacy:
-                VectorEnv = gym.vector.AsyncVectorEnv if self.asynchronous else gym.vector.SyncVectorEnv
+                VectorEnv = (
+                    gym.vector.AsyncVectorEnv
+                    if self.asynchronous
+                    else gym.vector.SyncVectorEnv
+                )
             else:
-                VectorEnv = gymnasium.vector.AsyncVectorEnv if self.asynchronous else gymnasium.vector.SyncVectorEnv
-            self.batch_envs = VectorEnv([lambda: copy.deepcopy(self.env) for _ in range(len(trial_info))])
-            obs, env_infos = self.batch_envs.reset(options=convert_df_to_dict(trial_info))
+                VectorEnv = (
+                    gymnasium.vector.AsyncVectorEnv
+                    if self.asynchronous
+                    else gymnasium.vector.SyncVectorEnv
+                )
+            self.batch_envs = VectorEnv(
+                [lambda: copy.deepcopy(self.env) for _ in range(len(trial_info))]
+            )
+            obs, env_infos = self.batch_envs.reset(
+                options=convert_df_to_dict(trial_info),
+                seed=self.rng.integers(
+                    low=0, high=4294967295, size=len(trial_info)
+                ).tolist(),
+            )
             info = {}
             other = {}
             for field in self.info_fields:
                 if field in env_infos:
                     info[field] = env_infos[field]
             return pd.DataFrame(info), obs, other, None
-        
-        assert self.batch_envs is not None, f"You must initialize the envs by first passing in trial info"
+
+        assert (
+            self.batch_envs is not None
+        ), f"You must initialize the envs by first passing in trial info"
         obs, reward, term, trunc, env_infos = self.batch_envs.step(actions)
-        info = {'done': np.any([term, trunc] + [env_infos.get(key) for key in self.done_fields], axis=0)}
+        info = {
+            "done": np.any(
+                [term, trunc] + [env_infos.get(key) for key in self.done_fields], axis=0
+            )
+        }
         other = {}
-        if 'reward' in self.other_fields:
-            other['reward'] = reward
+        if "reward" in self.other_fields:
+            other["reward"] = reward
         for field in self.info_fields:
             if field in env_infos:
                 info[field] = env_infos[field]

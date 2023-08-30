@@ -1,5 +1,6 @@
 import sys
-sys.path.insert(1, '/home/fpei2/learning/ttrnn/')
+
+sys.path.insert(1, "/home/fpei2/learning/ttrnn/")
 
 import numpy as np
 from typing import Optional, Any
@@ -10,6 +11,7 @@ from synergen.systems.models.base import Model
 from synergen.systems.envs.gym import GymEnvironment
 from synergen.embedding.pca import PCA
 from synergen.synthetic_data.lin_nonlin import LinearNonlinearPoisson
+from synergen.utils.data_io import read_file
 
 import torch
 
@@ -30,17 +32,17 @@ task = HarlowMinimalDelay(
     obj_init="normal",
     orthogonalize=True,
     abort=True,
-    rewards={'abort': -0.1, 'correct': 1.0, 'fail': 0.0},
-    timing={'fixation': 200, 'stimulus': 400, 'delay': 200, 'decision': 200},
+    rewards={"abort": -0.1, "correct": 1.0, "fail": 0.0},
+    timing={"fixation": 200, "stimulus": 400, "delay": 200, "decision": 200},
     num_trials_before_reset=6,
     r_tmax=-1.0,
 )
 
 std_noise = 0.1
 wrappers = [
-    (Noise, {'std_noise': std_noise}),
-    (PassAction, {'one_hot': True}), 
-    (PassReward, {}), 
+    (Noise, {"std_noise": std_noise}),
+    (PassAction, {"one_hot": True}),
+    (PassReward, {}),
     # (ParallelEnvs, {'num_envs': 8}),
 ]
 
@@ -55,11 +57,12 @@ model = pl_module.model
 env = GymEnvironment(
     env=task,
     max_batch_size=8,
-    info_fields=['performance'],
-    other_fields=['gt', 'reward'],
-    done_fields=['new_trial'],
+    info_fields=["performance"],
+    other_fields=["gt", "reward"],
+    done_fields=["block_done"],
     legacy=True,
 )
+
 
 class A2CModel(Model):
     def __init__(self, model: ActorCritic, seed: Optional[int] = None):
@@ -69,21 +72,23 @@ class A2CModel(Model):
         )
         self.model = model
         self.model.rnn.update_cache()
-    
+
     def simulate(
-        self, 
-        ics: np.ndarray, 
+        self,
+        ics: np.ndarray,
         inputs: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray, Any]:
         with torch.no_grad():
             action_logits, value, hx = self.model(
-                torch.from_numpy(inputs).float(), 
-                torch.from_numpy(ics).float(), 
-                cached=True)
+                torch.from_numpy(inputs).float(),
+                torch.from_numpy(ics).float(),
+                cached=True,
+            )
             hx = hx.numpy()
             action = action_logits.mode.numpy()
             action_logits = action_logits.logits.numpy()
-        return hx, action_logits, action    
+        return hx, action_logits, action
+
 
 system = CoupledSystem(
     model=A2CModel(model=model),
@@ -120,15 +125,26 @@ trajectory_kwargs = dict(
     ic_kwargs=dict(
         dist="normal",
         dist_params=dict(
-            loc=0.,
+            loc=0.0,
             scale=0.1,
-        )
+        ),
     ),
+    trial_kwargs=dict(),
     simulation_kwargs=dict(),
+    max_steps=60,
+)
+
+export_kwargs = dict(
+    file_format="nwb",
+    file_path="test.nwb",
+    overwrite=True,
 )
 
 output = datagen.generate_dataset(
     trajectory_kwargs=trajectory_kwargs,
+    export_kwargs=export_kwargs,
 )
 
-import pdb; pdb.set_trace()
+import pdb
+
+pdb.set_trace()

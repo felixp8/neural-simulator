@@ -8,12 +8,11 @@ from ..utils.types import TrajectoryBatch, stack_trajectory_batches
 
 class ArraySystem(System):
     def __init__(
-        self, 
+        self,
         trajectories: Optional[np.ndarray] = None,
         trial_info: Optional[pd.DataFrame] = None,
         inputs: Optional[np.ndarray] = None,
         outputs: Optional[np.ndarray] = None,
-        targets: Optional[np.ndarray] = None,
         other: Optional[dict[str, np.ndarray]] = None,
         trajectory_batch: Optional[TrajectoryBatch] = None,
         sample_method: Literal["random", "first", "last"] = "random",
@@ -27,16 +26,15 @@ class ArraySystem(System):
                 trial_info=trial_info,
                 inputs=inputs,
                 outputs=outputs,
-                targets=targets,
                 other=other,
             )
         else:
             self.trajectory_batch = trajectory_batch
         self.sample_method = sample_method
-    
+
     def sample_trajectories(
-        self, 
-        n_traj: int, 
+        self,
+        n_traj: int,
     ):
         trajectory_batches = []
         sampled = 0
@@ -47,7 +45,9 @@ class ArraySystem(System):
             elif self.sample_method == "last":
                 trajectory_batches.append(self.trajectory_batch[-batch_size:])
             else:
-                indices = self.rng.choice(len(self.trajectory_batch, batch_size, replace=False))
+                indices = self.rng.choice(
+                    len(self.trajectory_batch, batch_size, replace=False)
+                )
                 trajectory_batches.append(self.trajectory_batch[indices])
             sampled += batch_size
         return stack_trajectory_batches(trajectory_batches)
