@@ -57,9 +57,8 @@ model = pl_module.model
 env = GymEnvironment(
     env=task,
     max_batch_size=8,
-    info_fields=["performance"],
-    other_fields=["gt", "reward"],
-    done_fields=["block_done"],
+    info_kwargs={"info_fields": ["performance"], "other_fields": ["gt", "reward"]},
+    done_kwargs={"fields": ["block_done"]},
     legacy=True,
 )
 
@@ -135,9 +134,9 @@ trajectory_kwargs = dict(
 )
 
 export_kwargs = dict(
-    file_format="nwb",
-    file_path="test.nwb",
-    overwrite=True,
+    # file_format="nwb",
+    # file_path="test.nwb",
+    # overwrite=True,
 )
 
 output = datagen.generate_dataset(

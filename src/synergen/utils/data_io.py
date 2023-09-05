@@ -287,7 +287,13 @@ def write_to_nwb(
             "stop_time": round((trial_start_idxs[i] + trial_length) * dt, 9),
         }
         if trajectory_batch.trial_info is not None:
-            trial_data.update(trajectory_batch.trial_info.iloc[i].to_dict())
+            trial_info_dict = trajectory_batch.trial_info.iloc[i].to_dict()
+            for key in trial_info_dict.keys():
+                if key.endswith("_time"):
+                    trial_info_dict[key] = (
+                        trial_info_dict[key] + trial_data["start_time"]
+                    )
+            trial_data.update(trial_info_dict)
         nwbfile.add_trial(**trial_data)
 
     simulation_data = []

@@ -131,11 +131,11 @@ trajectory_kwargs = dict(
 )
 
 export_kwargs = dict(
-    file_format="nwb",
-    file_path="test.nwb",
-    overwrite=True,
-    dt=0.005,
-    inter_trial_interval=20,
+    # file_format="nwb",
+    # file_path="test.nwb",
+    # overwrite=True,
+    # dt=0.005,
+    # inter_trial_interval=20,
 )
 
 output = datagen.generate_dataset(

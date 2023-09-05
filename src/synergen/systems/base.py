@@ -178,6 +178,7 @@ class CoupledSystem(NonAutonomousSystem):
             trial_info=trial_info,
             actions=None,
             env_state=None,
+            initialize=True,
         )
         if "done" in info.columns:
             env_done = info["done"].to_numpy()
@@ -270,11 +271,6 @@ class UncoupledSystem(NonAutonomousSystem):
         batch_size = batch_size or n_traj
         if self.model.max_batch_size is not None:
             batch_size = min(batch_size, self.model.max_batch_size)
-        if self.env.max_batch_size is not None:
-            import pdb
-
-            pdb.set_trace()
-            batch_size = min(batch_size, self.env.max_batch_size)
 
         ics = self.model.sample_ics(n=n_traj, **ic_kwargs)  # b x d
         trial_info, inputs, other = self.env.sample_inputs(n=n_traj, **trial_kwargs)
