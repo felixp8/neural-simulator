@@ -6,7 +6,11 @@ from .systems.base import System
 from .embedding.base import Embedding
 from .synthetic_data.base import DataSampler  # TODO: rename this??
 from .utils.data_io import write_file
-from .utils.types import TrajectoryBatch, stack_trajectory_batches
+from .utils.types import (
+    TrajectoryBatch,
+    stack_trajectory_batches,
+    shuffle_trajectory_batch,
+)
 
 
 class NeuralDataGenerator:
@@ -36,18 +40,22 @@ class NeuralDataGenerator:
     def generate_dataset(
         self,
         trajectory_kwargs: dict = {},
-        n_repeats: int = 1,
         embedding_kwargs: dict = {},
         sampling_kwargs: dict = {},
         export_kwargs: dict = {},
+        n_repeats: int = 1,
+        shuffle: bool = False,
     ):
         # make latent trajectories
         trajectory_batch = self.system.sample_trajectories(
             **trajectory_kwargs
         )  # traj: B x T x D
         # copy trajectories if desired
-        if n_repeats > 1:
+        if n_repeats != 1:
+            assert n_repeats > 1, "`n_repeats` must be >= 1"
             trajectory_batch = stack_trajectory_batches([trajectory_batch] * n_repeats)
+        if shuffle:
+            trajectory_batch = shuffle_trajectory_batch(trajectory_batch, self.rng)
         trajectories = trajectory_batch.trajectories
         # embedding
         if self.embedding is not None:
@@ -59,5 +67,7 @@ class NeuralDataGenerator:
         )  # TODO: decide on a good data format
         # export to NWB if desired
         if export_kwargs:
-            write_file(trajectory_batch=trajectory_batch, **export_kwargs)
+            write_file(
+                trajectory_batch=trajectory_batch, generator=self, **export_kwargs
+            )
         return trajectory_batch

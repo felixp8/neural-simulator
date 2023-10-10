@@ -3,11 +3,11 @@ import pandas as pd
 import h5py
 import zipfile
 from numpy.lib.recfunctions import repack_fields
+from sklearn.model_selection import train_test_split
 from pathlib import Path
 from typing import Optional, Union, Literal
 
 from .types import TrajectoryBatch
-
 
 # general
 
@@ -15,7 +15,8 @@ from .types import TrajectoryBatch
 def write_file(
     file_path: Union[Path, str],
     trajectory_batch: TrajectoryBatch,
-    file_format: Literal["npz", "hdf5", "nwb"],
+    file_format: Literal["npz", "hdf5", "nwb", "benchmark"],
+    generator=None,
     overwrite: bool = False,
     **kwargs,
 ):
@@ -23,6 +24,7 @@ def write_file(
         return write_to_hdf5(
             file_path=file_path,
             trajectory_batch=trajectory_batch,
+            generator=generator,
             overwrite=overwrite,
             **kwargs,
         )
@@ -30,6 +32,7 @@ def write_file(
         return write_to_npz(
             file_path=file_path,
             trajectory_batch=trajectory_batch,
+            generator=generator,
             overwrite=overwrite,
             **kwargs,
         )
@@ -37,6 +40,15 @@ def write_file(
         return write_to_nwb(
             file_path=file_path,
             trajectory_batch=trajectory_batch,
+            generator=generator,
+            overwrite=overwrite,
+            **kwargs,
+        )
+    if file_format == "benchmark":
+        return write_to_benchmark(
+            file_path=file_path,
+            trajectory_batch=trajectory_batch,
+            generator=generator,
             overwrite=overwrite,
             **kwargs,
         )
@@ -77,27 +89,33 @@ def check_data_shape(
 def write_to_hdf5(
     file_path: Union[Path, str],
     trajectory_batch: TrajectoryBatch,
+    generator=None,
+    include: Optional[list] = None,
     overwrite: bool = False,
 ):
     file_path = Path(file_path)
     assert (
         overwrite or not file_path.exists()
     ), f"Path {file_path} already exists. Please set `overwrite=True` if you wish to overwrite it."
+    include = include or flatten_dict_keys(trajectory_batch.__dict__)
     with h5py.File(file_path, "w") as h5f:
-        h5f.create_dataset(name="trajectories", data=trajectory_batch.trajectories)
-        if trajectory_batch.inputs is not None:
+        if "trajectories" in include:
+            h5f.create_dataset(name="trajectories", data=trajectory_batch.trajectories)
+        if "inputs" in include and trajectory_batch.inputs is not None:
             h5f.create_dataset(name="inputs", data=trajectory_batch.inputs)
-        if trajectory_batch.outputs is not None:
+        if "outputs" in include and trajectory_batch.outputs is not None:
             h5f.create_dataset(name="outputs", data=trajectory_batch.outputs)
         if trajectory_batch.other is not None:
-            other = h5f.create_group(name="other")
             for key, val in trajectory_batch.other.items():
-                other.create_dataset(name=key, data=val)
+                if f"other.{key}" in include:
+                    other = get_group(h5obj=h5f, group_name="other")
+                    other.create_dataset(name=key, data=val)
         if trajectory_batch.neural_data is not None:
-            neural_data = h5f.create_group(name="neural_data")
             for key, val in trajectory_batch.neural_data.items():
-                neural_data.create_dataset(name=key, data=val)
-        if trajectory_batch.trial_info is not None:
+                if f"neural_data.{key}" in include:
+                    neural_data = get_group(h5obj=h5f, group_name="neural_data")
+                    neural_data.create_dataset(name=key, data=val)
+        if "trial_info" in include and trajectory_batch.trial_info is not None:
             ti_as_array = df_to_sarray(trajectory_batch.trial_info)
             if ti_as_array is not None:
                 drop_names = []
@@ -165,6 +183,8 @@ def check_data_shape_hdf5(
 def write_to_npz(
     file_path: Union[Path, str],
     trajectory_batch: TrajectoryBatch,
+    generator=None,
+    # TODO: support `include`
     overwrite: bool = False,
 ):
     file_path = Path(file_path)
@@ -240,6 +260,8 @@ def check_data_shape_npz(
 def write_to_nwb(
     file_path: Union[Path, str],
     trajectory_batch: TrajectoryBatch,
+    generator=None,
+    # TODO: support `include`
     dt: float = 0.01,
     inter_trial_interval: int = 10,
     overwrite: bool = False,
@@ -386,6 +408,126 @@ def write_to_nwb(
         io.write(nwbfile)
 
 
+# TODO: def read_from_nwb
+
+
+# benchmark
+
+
+def write_to_benchmark(
+    file_path: Union[Path, str],
+    trajectory_batch: TrajectoryBatch,
+    generator=None,
+    overwrite: bool = False,
+    trial_split_ratio: Union[list, tuple] = (0.8, 0.2),
+    neuron_split_ratio: Union[list, tuple] = (1.0, 0.0),
+    seed: Optional[int] = None,
+):
+    file_path = Path(file_path)
+    assert (
+        overwrite or not file_path.exists()
+    ), f"Path {file_path} already exists. Please set `overwrite=True` if you wish to overwrite it."
+
+    assert (
+        len(trial_split_ratio) == 2
+    ), f"Only supports 2 trial splits currently (train/valid) but received {len(trial_split_ratio)} values."
+    trial_split_ratio = np.array(trial_split_ratio)
+    trial_split_ratio /= trial_split_ratio.sum()
+    assert trial_split_ratio[-1] > 0, f"Cannot have valid split ratio <= 0.0"
+
+    assert (
+        len(neuron_split_ratio) == 2
+    ), f"Only supports 2 neuron splits currently (heldin/out) but received {len(neuron_split_ratio)} values."
+    neuron_split_ratio = np.array(neuron_split_ratio)
+    neuron_split_ratio /= neuron_split_ratio.sum()
+
+    assert trajectory_batch.neural_data is not None
+    assert (
+        "spikes" in trajectory_batch.neural_data
+    )  # TODO: allow mapping what fields to go recon data, etc.
+    assert "rates" in trajectory_batch.neural_data
+
+    trial_inds = np.arange(len(trajectory_batch))
+    train_trial_inds, valid_trial_inds = train_test_split(
+        trial_inds, test_size=trial_split_ratio[-1], random_state=seed
+    )
+
+    neuron_inds = np.arange(trajectory_batch.neural_data["spikes"].shape[-1])
+    if neuron_split_ratio[-1] == 0.0:
+        heldin_neuron_inds = all_neuron_inds = neuron_inds
+    else:
+        heldin_neuron_inds, heldout_neuron_inds = train_test_split(
+            neuron_inds, test_size=neuron_split_ratio[-1], random_state=seed
+        )
+        all_neuron_inds = np.concatenate([heldin_neuron_inds, heldout_neuron_inds])
+
+    with h5py.File(file_path, "w") as h5f:
+        h5f.create_dataset(
+            "train_encod_data",
+            data=trajectory_batch.neural_data["spikes"][train_trial_inds][
+                :, :, heldin_neuron_inds
+            ],
+        )
+        h5f.create_dataset(
+            "valid_encod_data",
+            data=trajectory_batch.neural_data["spikes"][valid_trial_inds][
+                :, :, heldin_neuron_inds
+            ],
+        )
+
+        h5f.create_dataset(
+            "train_recon_data",
+            data=trajectory_batch.neural_data["spikes"][train_trial_inds][
+                :, :, all_neuron_inds
+            ],
+        )
+        h5f.create_dataset(
+            "valid_recon_data",
+            data=trajectory_batch.neural_data["spikes"][valid_trial_inds][
+                :, :, all_neuron_inds
+            ],
+        )
+
+        h5f.create_dataset(
+            "train_activity",
+            data=trajectory_batch.neural_data["rates"][train_trial_inds][
+                :, :, all_neuron_inds
+            ],
+        )
+        h5f.create_dataset(
+            "valid_activity",
+            data=trajectory_batch.neural_data["rates"][valid_trial_inds][
+                :, :, all_neuron_inds
+            ],
+        )
+
+        h5f.create_dataset(
+            "train_latents", data=trajectory_batch.trajectories[train_trial_inds]
+        )
+        h5f.create_dataset(
+            "valid_latents", data=trajectory_batch.trajectories[valid_trial_inds]
+        )
+
+        if trajectory_batch.inputs is not None:
+            h5f.create_dataset(
+                "train_inputs", data=trajectory_batch.inputs[train_trial_inds]
+            )
+            h5f.create_dataset(
+                "valid_inputs", data=trajectory_batch.inputs[valid_trial_inds]
+            )
+
+        h5f.create_dataset("train_inds", data=train_trial_inds)
+        h5f.create_dataset("valid_inds", data=valid_trial_inds)
+
+        h5f.create_dataset("perm_neurons", data=all_neuron_inds)
+        if generator is not None:
+            sampler_params = generator.data_sampler.get_params()
+            for key, val in sampler_params.items():
+                h5f.create_dataset(
+                    (key if key != "proj_weights" else "readout"), data=val
+                )
+
+
 # utils
 
 
@@ -455,3 +597,23 @@ def h5_to_dict(
         for key in h5obj.keys()
     }
     return h5_dict
+
+
+def flatten_dict_keys(d, prefix=""):
+    keys = []
+    for key in d.keys():
+        if isinstance(d[key], dict):
+            keys += flatten_dict_keys(d[key], prefix=f"{prefix}{key}.")
+        else:
+            keys.append(f"{prefix}{key}")
+    return keys
+
+
+def get_group(h5obj: h5py.Group, group_name: str, **kwargs):
+    if group_name in h5obj.keys():
+        assert isinstance(
+            h5obj[group_name], h5py.Group
+        ), f"{group_name} exists but is not a `h5py.Group`"
+        return h5obj[group_name]
+    else:
+        return h5obj.create_group(group_name, **kwargs)

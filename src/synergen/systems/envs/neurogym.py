@@ -38,8 +38,8 @@ class NeurogymEnvironment(GymEnvironment):
             obs, info = self.reset_envs(trial_info.loc[[i], :])
             if info:
                 trial_info.loc[i, list(info.keys())] = list(info.values())
-            inputs.append(self.env.ob)
-            targets.append(self.env.gt)
+            inputs.append(self.batch_envs.ob)
+            targets.append(self.batch_envs.gt)
         inputs = np.stack(inputs, axis=0)
         targets = np.stack(targets, axis=0)
         if len(targets.shape) == 2:

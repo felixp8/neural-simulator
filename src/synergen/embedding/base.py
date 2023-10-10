@@ -18,6 +18,9 @@ class Embedding:
     def transform(self, X: np.ndarray, *args, **kwargs):
         raise NotImplementedError
 
+    def get_params(self):
+        return dict(embedding_name=self.__class__.__name__)
+
 
 class SklearnEmbedding(Embedding):
     def __init__(

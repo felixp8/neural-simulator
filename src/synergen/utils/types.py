@@ -110,3 +110,25 @@ def stack_trajectory_batches(trajectory_batches: list[TrajectoryBatch]):
         for field in trajectory_batches[0].__dict__.keys()
     }
     return TrajectoryBatch(**stacked)
+
+
+def shuffle_trajectory_batch(
+    trajectory_batch: TrajectoryBatch,
+    seed: Optional[Union[int, np.random.Generator]] = None,
+):
+    if isinstance(seed, np.random.Generator):
+        rng = seed
+    else:
+        rng = np.random.default_rng(seed)
+    perm = rng.permutation(len(trajectory_batch))
+    shuffled_data = {}
+    for field in trajectory_batch.__dict__.keys():
+        if trajectory_batch.__dict__[field] is None:
+            continue
+        if isinstance(trajectory_batch.__dict__[field], dict):
+            shuffled_data[field] = {
+                key: val[perm] for key, val in trajectory_batch.__dict__[field].items()
+            }
+        else:
+            shuffled_data[field] = trajectory_batch.__dict__[field][perm]
+    return TrajectoryBatch(**shuffled_data)

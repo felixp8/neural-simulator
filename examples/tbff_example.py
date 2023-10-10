@@ -81,10 +81,9 @@ class NBFFEnvironment(Environment):
         self.env = env  # currently no way to seed env it seems
 
     def sample_inputs(self, n: int):
-        inputs_ds, outputs_ds = self.env.generate_dataset(n_samples=n)
-        inputs = outputs_ds  # confusing lol...
+        inputs, outputs = self.env.generate_dataset(n_samples=n)
         trial_info = pd.DataFrame([], index=np.arange(n))  # no trial info
-        other = {"pulses": inputs_ds}
+        other = {"ff_state": outputs}
         return trial_info, inputs, other
 
 
@@ -131,6 +130,8 @@ trajectory_kwargs = dict(
 )
 
 export_kwargs = dict(
+    file_format="hdf5",
+    file_path="tbff_node_offset-3.h5",
     # file_format="nwb",
     # file_path="test.nwb",
     # overwrite=True,

@@ -38,6 +38,9 @@ class System:
         """
         raise NotImplementedError
 
+    def get_params(self):
+        return dict(system_name=self.__class__.__name__)
+
 
 class AutonomousSystem(System):
     """Dynamical system that does not receive external inputs"""
