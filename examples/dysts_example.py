@@ -3,7 +3,7 @@ import numpy as np
 from synergen.core import NeuralDataGenerator
 from synergen.systems.base import AutonomousSystem
 from synergen.systems.models.dysts import DystsModel
-from synergen.synthetic_data.lin_nonlin import LinearNonlinearPoisson
+from synergen.neural_data.lin_nonlin import LinearNonlinearPoisson
 
 
 seed = 0
@@ -36,16 +36,16 @@ trajectory_kwargs = dict(
     ic_kwargs=dict(
         dist="normal",
         dist_params=dict(
-            loc=np.array([0., 0., 20]),
-            scale=np.array([3., 3., 3.]),
-        )
+            loc=np.array([0.0, 0.0, 20]),
+            scale=np.array([3.0, 3.0, 3.0]),
+        ),
     ),
     simulation_kwargs=dict(
         trial_len=100,
         burn_in=100,
         pts_per_period=100,
         standardize=True,
-    )
+    ),
 )
 
 output = datagen.generate_dataset(

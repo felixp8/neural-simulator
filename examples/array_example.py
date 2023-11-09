@@ -7,7 +7,7 @@ from typing import Optional, Any
 from synergen.core import NeuralDataGenerator
 from synergen.systems.array import ArraySystem
 from synergen.embedding.pca import PCA
-from synergen.synthetic_data.lin_nonlin import LinearNonlinearPoisson
+from synergen.neural_data.lin_nonlin import LinearNonlinearPoisson
 
 seed = 0
 
@@ -43,11 +43,11 @@ with h5py.File(data_dir / file_path, "r") as h5f:
     trial_info = pd.DataFrame(epoch_nums[:, None], columns=["epoch_num"])
 
 system = ArraySystem(
-    trajectories=latents,
+    states=latents,
     trial_info=trial_info,
     inputs=inputs,
     outputs=outputs,
-    other={"targets": targets},
+    temporal_data={"targets": targets},
     sample_method="first",
     seed=seed,
 )
@@ -55,14 +55,13 @@ system = ArraySystem(
 # make other objects
 
 data_sampler = LinearNonlinearPoisson(
-    input_dim=128,
     output_dim=50,
-    # proj_weight_dist="uniform",
-    # proj_weight_params=dict(
-    #     low=-1.0,
-    #     high=1.0,
-    # ),
-    proj_weight_dist="eye",
+    proj_weight_dist="uniform",
+    proj_weight_params=dict(
+        low=-1.0,
+        high=1.0,
+    ),
+    # proj_weight_dist="eye",
     normalize_proj=False,
     nonlinearity="exp",
     nonlinearity_params=dict(
@@ -89,9 +88,9 @@ trajectory_kwargs = dict(
 )
 
 export_kwargs = dict(
-    file_format="benchmark",
-    file_path="temp.h5",
-    overwrite=True,
+    # file_format="lfads",
+    # file_path="temp.h5",
+    # overwrite=True,
     # file_format="nwb",
     # file_path="test.nwb",
     # overwrite=True,
@@ -106,8 +105,8 @@ output = datagen.generate_dataset(
 
 from sklearn.decomposition import PCA
 
-trajectories_all = output.trajectories.reshape(-1, output.trajectories.shape[-1]).copy()
-trajectories_all -= trajectories_all.mean(axis=-1, keepdims=True)
+trajectories_all = output.states.reshape(-1, output.states.shape[-1]).copy()
+trajectories_all -= trajectories_all.mean(axis=0, keepdims=True)
 pca1 = PCA()
 pca1.fit(trajectories_all)
 orig_participation_ratio = np.square(np.sum(pca1.explained_variance_)) / np.sum(
@@ -120,7 +119,7 @@ rates_all = (
     .reshape(-1, output.neural_data["rates"].shape[-1])
     .copy()
 )
-rates_all -= rates_all.mean(axis=-1, keepdims=True)
+rates_all -= rates_all.mean(axis=0, keepdims=True)
 pca2 = PCA()
 pca2.fit(rates_all)
 rate_participation_ratio = np.square(np.sum(pca2.explained_variance_)) / np.sum(
@@ -131,7 +130,7 @@ print(rate_participation_ratio)
 logrates_all = np.log(
     output.neural_data["rates"].reshape(-1, output.neural_data["rates"].shape[-1])
 )
-logrates_all -= logrates_all.mean(axis=-1, keepdims=True)
+logrates_all -= logrates_all.mean(axis=0, keepdims=True)
 pca3 = PCA()
 pca3.fit(logrates_all)
 lograte_participation_ratio = np.square(np.sum(pca3.explained_variance_)) / np.sum(

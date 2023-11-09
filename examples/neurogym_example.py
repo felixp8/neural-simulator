@@ -9,7 +9,7 @@ from synergen.systems.base import UncoupledSystem
 from synergen.systems.models.base import Model
 from synergen.systems.envs.neurogym import NeurogymEnvironment
 from synergen.embedding.pca import PCA
-from synergen.synthetic_data.lin_nonlin import LinearNonlinearPoisson
+from synergen.neural_data.lin_nonlin import LinearNonlinearPoisson
 
 import neurogym as ngym
 

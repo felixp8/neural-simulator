@@ -9,8 +9,8 @@ class DystsModel(Model):
 
     def __init__(
         self,
-        name: str, 
-        params: dict = {}, 
+        name: str,
+        params: dict = {},
         seed: Optional[int] = None,
     ):
         self.flow = getattr(flows, name)(**params)
@@ -19,7 +19,7 @@ class DystsModel(Model):
             n_dim=self.flow.embedding_dimension,
             seed=seed,
         )
-    
+
     def simulate(
         self,
         ics: np.ndarray,
@@ -31,9 +31,9 @@ class DystsModel(Model):
         standardize: bool = False,
         postprocess: bool = True,
         noise: float = 0.0,
-        inputs: Optional[Any] = None,
-    ) -> tuple[np.ndarray, Union[np.ndarray, None], Union[Any, None]]:
-        """Simulate trajectories from dysts dynamical system
+        save_ics: bool = False,
+    ) -> tuple[np.ndarray, Optional[np.ndarray], Any, Optional[dict]]:
+        """Simulate states from dysts dynamical system
 
         Parameters
         ----------
@@ -42,14 +42,14 @@ class DystsModel(Model):
             shape (B,N) where B is batch size/trial count
             and N is dimensionality of the dynamics model
         trial_len : int
-            Lengths of trajectories to simulate
+            Lengths of states to simulate
         burn_in : int, default: 0
             Number of samples to drop from the beginning of
             simulations as a "burn-in" period
         method : str, default: "Radau"
             Integration method. See `dysts`
         resample : bool, default: True
-            Whether to resample trajectories to have 
+            Whether to resample states to have
             matching dominant Fourier components. See `dysts`
         pts_per_period : int, default: 100
             If resampling, the number of points per period.
@@ -58,23 +58,28 @@ class DystsModel(Model):
             Whether to standardize the output time series.
             See `dysts`
         postprocess: bool, default: True
-            Whether to apply coordinate conversions and other 
-            domain-specific rescalings to the integration 
+            Whether to apply coordinate conversions and other
+            domain-specific rescalings to the integration
             coordinates. See `dysts`
-        inputs : optional
-            Completely ignored
-        
+        save_ics : bool, default: False
+            Whether to save the sampled initial conditions
+            in `batched_data` or not
+
         Returns
         -------
-        trajectories : np.ndarray
-            Sampled trajectories, with shape (B,T,N)
-        outputs : NoneType
+        states : np.ndarray
+            Sampled states, with shape (B,T,N)
+        outputs : None
             Does not return outputs
+        actions : None
+            Does not return outputs
+        temporal_data : None
+            Does not return additional temporal data
         """
-        trajectories = []
+        states = []
         for ic in ics:
             self.flow.ic = ic
-            traj = self.flow.make_trajectory(
+            state_traj = self.flow.make_trajectory(
                 n=(trial_len + burn_in),
                 method=method,
                 resample=resample,
@@ -83,6 +88,6 @@ class DystsModel(Model):
                 postprocess=postprocess,
                 noise=noise,
             )[burn_in:]
-            trajectories.append(traj)
-        trajectories = np.stack(trajectories, axis=0)
-        return trajectories, None, None
+            states.append(state_traj)
+        states = np.stack(states, axis=0)
+        return states, None, None, None

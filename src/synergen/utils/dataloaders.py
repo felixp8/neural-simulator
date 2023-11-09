@@ -2,20 +2,20 @@ from pathlib import Path
 from typing import Optional, Union
 import torch.utils.data as data
 
-from .types import TrajectoryBatch
+from .types import DataBatch
 from .data_io import read_file, check_data_shape
 
 
 class SyntheticNeuralDataset(data.Dataset):
     def __init__(
         self,
-        source_data: Union[str, Path, TrajectoryBatch],
+        source_data: Union[str, Path, DataBatch],
         data_fields: Optional[list[str]],
         in_memory: bool = True,
     ):
         super().__init__()
         self.data_fields = data_fields
-        if isinstance(source_data, TrajectoryBatch):
+        if isinstance(source_data, DataBatch):
             self.source_data = source_data
             self.source_data_path = None
         else:
@@ -34,17 +34,15 @@ class SyntheticNeuralDataset(data.Dataset):
 
     def __getitem__(self, idx):
         if self.source_data is None:
-            trajectory_item = read_file(self.source_data_path, read_slice=[idx])
+            data_item = read_file(self.source_data_path, read_slice=[idx])
         else:
-            trajectory_item = self.source_data[idx]
+            data_item = self.source_data[idx]
         data_list = []
         for field in self.data_fields:
-            if field.startswith("other"):
-                data_list.append(trajectory_item.other[field.partition("other.")[-1]])
+            if field.startswith("temporal_data"):
+                data_list.append(data_item.temporal_data[field.partition(".")[-1]])
             elif field.startswith("neural_data"):
-                data_list.append(
-                    trajectory_item.neural_data[field.partition("neural_data.")[-1]]
-                )
+                data_list.append(data_item.neural_data[field.partition(".")[-1]])
             else:
-                data_list.append(trajectory_item.__dict__[field])
+                data_list.append(data_item.__dict__[field])
         return tuple(data_list)

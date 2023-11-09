@@ -22,7 +22,7 @@ class Environment:
         if isinstance(seed, np.random.Generator):
             self.rng = seed
         else:
-            self.rng = np.random.default_rng(seed)
+            self.rng = np.random.default_rng(seed=seed)
 
     def sample_trial_info(
         self,
@@ -70,7 +70,7 @@ class Environment:
         n: Optional[int] = None,
         *args,
         **kwargs,
-    ) -> tuple[pd.DataFrame, np.ndarray, dict[str, np.ndarray]]:
+    ) -> tuple[pd.DataFrame, np.ndarray, Optional[dict]]:
         """Sample time-varying inputs to the dynamics model
 
         Returns
@@ -83,11 +83,11 @@ class Environment:
             shape (B,T,I) where B is batch size/trial
             count, T is number of timesteps, and I is
             input dimensionality
-        other : dict of np.ndarray
+        temporal_data : dict, optional
             Optional additional information about the
             environment that is not input to the dynamics
             model. The dict should map name of the field
-            to a (B,T,D) array
+            to a (B,T,-1) array
         """
         if inputs is not None:
             if trial_info is None:
@@ -102,7 +102,7 @@ class Environment:
         env_state: Optional[Any] = None,
         *args,
         **kwargs,
-    ) -> tuple[pd.DataFrame, np.ndarray, dict[str, np.ndarray], Any]:
+    ) -> tuple[pd.DataFrame, np.ndarray, Optional[dict], Any]:
         """Simulate the environment forward in time,
         given trial info to initialize the environment
         or actions from the dynamics model
@@ -123,13 +123,15 @@ class Environment:
         -------
         info : pd.DataFrame
             Information about each trial, such as cumulative
-            reward, to be used to update trial info
+            reward, to be used to update trial info. Importantly,
+            this must also contain a "done" field that indicates
+            when the environment has finished a given trial
         inputs : np.ndarray
             Observations from the environment to be input
             to the dynamics model, with shape (B,T,I), where
             B is the batch size/trial count, T is simulation length,
             and I is the input dimensionality
-        other : dict of np.ndarray
+        temporal_data : dict of np.ndarray, optional
             Any other time-varying state information about
             the environment that should not be passed to the
             model, such as reward in non-RL settings. The

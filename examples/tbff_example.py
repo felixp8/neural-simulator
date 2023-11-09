@@ -17,7 +17,7 @@ from synergen.systems.base import UncoupledSystem
 from synergen.systems.models.base import Model
 from synergen.systems.envs.base import Environment
 from synergen.embedding.pca import PCA
-from synergen.synthetic_data.lin_nonlin import LinearNonlinearPoisson
+from synergen.neural_data.lin_nonlin import LinearNonlinearPoisson
 
 
 # load stuff from the run

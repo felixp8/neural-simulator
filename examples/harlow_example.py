@@ -10,7 +10,7 @@ from synergen.systems.base import UncoupledSystem, CoupledSystem
 from synergen.systems.models.base import Model
 from synergen.systems.envs.gym import GymEnvironment
 from synergen.embedding.pca import PCA
-from synergen.synthetic_data.lin_nonlin import LinearNonlinearPoisson
+from synergen.neural_data.lin_nonlin import LinearNonlinearPoisson
 from synergen.utils.data_io import read_file
 
 import torch

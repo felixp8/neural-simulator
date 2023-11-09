@@ -7,48 +7,44 @@ from sklearn.model_selection import train_test_split
 from pathlib import Path
 from typing import Optional, Union, Literal
 
-from .types import TrajectoryBatch
+from .types import DataBatch
 
 # general
 
 
 def write_file(
     file_path: Union[Path, str],
-    trajectory_batch: TrajectoryBatch,
-    file_format: Literal["npz", "hdf5", "nwb", "benchmark"],
-    generator=None,
+    data_batch: DataBatch,
+    file_format: Literal["npz", "hdf5", "nwb", "lfads"],
     overwrite: bool = False,
     **kwargs,
 ):
     if file_format == "hdf5":
         return write_to_hdf5(
             file_path=file_path,
-            trajectory_batch=trajectory_batch,
-            generator=generator,
+            data_batch=data_batch,
             overwrite=overwrite,
             **kwargs,
         )
     if file_format == "npz":
         return write_to_npz(
             file_path=file_path,
-            trajectory_batch=trajectory_batch,
-            generator=generator,
+            data_batch=data_batch,
             overwrite=overwrite,
             **kwargs,
         )
     if file_format == "nwb":
+        print("Please do not do this. Exporting to NWB is a bad idea (right now).")
         return write_to_nwb(
             file_path=file_path,
-            trajectory_batch=trajectory_batch,
-            generator=generator,
+            data_batch=data_batch,
             overwrite=overwrite,
             **kwargs,
         )
     if file_format == "benchmark":
-        return write_to_benchmark(
+        return write_to_lfads(
             file_path=file_path,
-            trajectory_batch=trajectory_batch,
-            generator=generator,
+            data_batch=data_batch,
             overwrite=overwrite,
             **kwargs,
         )
@@ -88,47 +84,52 @@ def check_data_shape(
 
 def write_to_hdf5(
     file_path: Union[Path, str],
-    trajectory_batch: TrajectoryBatch,
-    generator=None,
+    data_batch: DataBatch,
     include: Optional[list] = None,
+    trial_info_as_csv: bool = True,
     overwrite: bool = False,
 ):
     file_path = Path(file_path)
     assert (
         overwrite or not file_path.exists()
     ), f"Path {file_path} already exists. Please set `overwrite=True` if you wish to overwrite it."
-    include = include or flatten_dict_keys(trajectory_batch.__dict__)
+    include = include or flatten_dict_keys(data_batch.__dict__)
     with h5py.File(file_path, "w") as h5f:
-        if "trajectories" in include:
-            h5f.create_dataset(name="trajectories", data=trajectory_batch.trajectories)
-        if "inputs" in include and trajectory_batch.inputs is not None:
-            h5f.create_dataset(name="inputs", data=trajectory_batch.inputs)
-        if "outputs" in include and trajectory_batch.outputs is not None:
-            h5f.create_dataset(name="outputs", data=trajectory_batch.outputs)
-        if trajectory_batch.other is not None:
-            for key, val in trajectory_batch.other.items():
-                if f"other.{key}" in include:
-                    other = get_group(h5obj=h5f, group_name="other")
-                    other.create_dataset(name=key, data=val)
-        if trajectory_batch.neural_data is not None:
-            for key, val in trajectory_batch.neural_data.items():
-                if f"neural_data.{key}" in include:
-                    neural_data = get_group(h5obj=h5f, group_name="neural_data")
-                    neural_data.create_dataset(name=key, data=val)
-        if "trial_info" in include and trajectory_batch.trial_info is not None:
-            ti_as_array = df_to_sarray(trajectory_batch.trial_info)
-            if ti_as_array is not None:
-                drop_names = []
-                for name in ti_as_array.dtype.names:
-                    if ti_as_array.dtype[name] == np.dtype("O"):
-                        drop_names.append(name)
-                if len(drop_names) > 0:
-                    print(
-                        f"Excluding columns {drop_names} from H5 file as they are unsupported dtypes"
-                    )
-                keep_names = list(set(ti_as_array.dtype.names) - set(drop_names))
-                ti_as_array = repack_fields(ti_as_array[keep_names])
-                h5f.create_dataset(name="trial_info", data=ti_as_array)
+        if "states" in include:
+            h5f.create_dataset(name="states", data=data_batch.states)
+        if "inputs" in include and data_batch.inputs is not None:
+            h5f.create_dataset(name="inputs", data=data_batch.inputs)
+        if "outputs" in include and data_batch.outputs is not None:
+            h5f.create_dataset(name="outputs", data=data_batch.outputs)
+        if "trial_info" in include and data_batch.trial_info is not None:
+            if trial_info_as_csv:
+                data_batch.trial_info.to_csv(file_path.stem + "_trial_info.csv")
+            else:
+                ti_as_array = df_to_sarray(data_batch.trial_info)
+                if ti_as_array is not None:
+                    drop_names = []
+                    for name in ti_as_array.dtype.names:
+                        if ti_as_array.dtype[name] == np.dtype("O"):
+                            drop_names.append(name)
+                    if len(drop_names) > 0:
+                        print(
+                            f"Excluding columns {drop_names} from H5 file as they are unsupported dtypes"
+                        )
+                    keep_names = list(set(ti_as_array.dtype.names) - set(drop_names))
+                    ti_as_array = repack_fields(ti_as_array[keep_names])
+                    h5f.create_dataset(name="trial_info", data=ti_as_array)
+        for key, val in data_batch.temporal_data.items():
+            if f"temporal_data.{key}" in include:
+                temporal_data = get_group(h5obj=h5f, group_name="temporal_data")
+                temporal_data.create_dataset(name=key, data=val)
+        for key, val in data_batch.neural_data.items():
+            if f"neural_data.{key}" in include:
+                neural_data = get_group(h5obj=h5f, group_name="neural_data")
+                neural_data.create_dataset(name=key, data=val)
+        for key, val in data_batch.general_data.items():
+            if f"general_data.{key}" in include:
+                general_data = get_group(h5obj=h5f, group_name="general_data")
+                general_data.create_dataset(name=key, data=val)
 
 
 def read_from_hdf5(
@@ -137,13 +138,14 @@ def read_from_hdf5(
 ):
     file_path = Path(file_path)
     assert file_path.exists(), f"File {file_path} not found"
+    trial_info_as_csv = Path(file_path.stem + "_trial_info.csv").exists()
     with h5py.File(file_path, "r") as h5f:
-        trajectories = h5f["trajectories"][read_slice]
+        states = h5f["states"][read_slice]
         inputs = h5f["inputs"][read_slice] if "inputs" in h5f.keys() else None
         outputs = h5f["outputs"][read_slice] if "outputs" in h5f.keys() else None
-        other = (
-            h5_to_dict(h5f["other"], read_slice=read_slice)
-            if "other" in h5f.keys()
+        temporal_data = (
+            h5_to_dict(h5f["temporal_data"], read_slice=read_slice)
+            if "temporal_data" in h5f.keys()
             else None
         )
         neural_data = (
@@ -151,20 +153,23 @@ def read_from_hdf5(
             if "neural_data" in h5f.keys()
             else None
         )
-        trial_info = (
-            sarray_to_df(h5f["trial_info"][read_slice])
-            if "trial_info" in h5f.keys()
-            else None
-        )
-    trajectory_batch = TrajectoryBatch(
-        trajectories=trajectories,
+        if trial_info_as_csv:
+            trial_info = pd.read_csv(file_path.stem + "_trial_info.csv")
+        else:
+            trial_info = (
+                sarray_to_df(h5f["trial_info"][read_slice])
+                if "trial_info" in h5f.keys()
+                else None
+            )
+    data_batch = DataBatch(
+        states=states,
         trial_info=trial_info,
         inputs=inputs,
         outputs=outputs,
-        other=other,
+        temporal_data=temporal_data,
         neural_data=neural_data,
     )
-    return trajectory_batch
+    return data_batch
 
 
 def check_data_shape_hdf5(
@@ -173,7 +178,7 @@ def check_data_shape_hdf5(
     file_path = Path(file_path)
     assert file_path.exists(), f"File {file_path} not found"
     with h5py.File(file_path, "r") as h5f:
-        b, t, _ = h5f["trajectories"].shape
+        b, t, _ = h5f["states"].shape
     return b, t
 
 
@@ -182,30 +187,39 @@ def check_data_shape_hdf5(
 
 def write_to_npz(
     file_path: Union[Path, str],
-    trajectory_batch: TrajectoryBatch,
-    generator=None,
-    # TODO: support `include`
+    data_batch: DataBatch,
+    include: Optional[list] = None,
+    trial_info_as_csv: bool = True,
     overwrite: bool = False,
 ):
     file_path = Path(file_path)
     assert (
         overwrite or not file_path.exists()
     ), f"Path {file_path} already exists. Please set `overwrite=True` if you wish to overwrite it."
-    data_dict = {"trajectories": trajectory_batch.trajectories}
-    if trajectory_batch.inputs is not None:
-        data_dict["inputs"] = trajectory_batch.inputs
-    if trajectory_batch.outputs is not None:
-        data_dict["outputs"] = trajectory_batch.outputs
-    if trajectory_batch.other is not None:
-        for key, val in trajectory_batch.other.items():
-            data_dict[f"other_{key}"] = val
-    if trajectory_batch.neural_data is not None:
-        for key, val in trajectory_batch.neural_data.items():
+    include = include or flatten_dict_keys(data_batch.__dict__)
+    data_dict = {}
+    if "states" in include:
+        data_dict["states"] = data_batch.states
+    if "inputs" in include and data_batch.inputs is not None:
+        data_dict["inputs"] = data_batch.inputs
+    if "outputs" in include and data_batch.outputs is not None:
+        data_dict["outputs"] = data_batch.outputs
+    if "trial_info" in include and data_batch.trial_info is not None:
+        if trial_info_as_csv:
+            data_batch.trial_info.to_csv(file_path.stem + "_trial_info.csv")
+        else:
+            ti_as_array = df_to_sarray(data_batch.trial_info)
+            if ti_as_array is not None:
+                data_dict["trial_info"] = ti_as_array
+    for key, val in data_batch.temporal_data.items():
+        if f"temporal_data.{key}" in include:
+            data_dict[f"temporal_data_{key}"] = val
+    for key, val in data_batch.neural_data.items():
+        if f"neural_data.{key}" in include:
             data_dict[f"neural_data_{key}"] = val
-    if trajectory_batch.trial_info is not None:
-        ti_as_array = df_to_sarray(trajectory_batch.trial_info)
-        if ti_as_array is not None:
-            data_dict["trial_info"] = ti_as_array
+    for key, val in data_batch.general_data.items():
+        if f"general_data.{key}" in include:
+            data_dict[f"general_data_{key}"] = val
     np.savez(file_path, **data_dict)
 
 
@@ -215,6 +229,7 @@ def read_from_npz(
 ):
     file_path = Path(file_path)
     assert file_path.exists(), f"File {file_path} not found"
+    trial_info_as_csv = Path(file_path.stem + "_trial_info.csv").exists()
     if read_slice != ():
         print(
             "warning: specifying read slices when reading from npz does not save memory, as "
@@ -222,14 +237,16 @@ def read_from_npz(
         )
     npzfile = np.load(file_path)
     data_dict = {}
+    if trial_info_as_csv:
+        data_dict["trial_info"] = pd.read_csv(file_path.stem + "_trial_info.csv")
     for filename in npzfile.files:
-        if filename == "trial_info":
+        if filename == "trial_info":  # could overwrite `trial_info_as_csv`. warn?
             data_dict["trial_info"] = sarray_to_df(npzfile[filename]).iloc[read_slice]
-        elif "other" in filename:
-            if "other" not in data_dict:
-                data_dict["other"] = {}
-            key = filename.partition("other_")[-1]
-            data_dict["other"][key] = npzfile[filename][read_slice]
+        elif "temporal_data" in filename:
+            if "temporal_data" not in data_dict:
+                data_dict["temporal_data"] = {}
+            key = filename.partition("temporal_data_")[-1]
+            data_dict["temporal_data"][key] = npzfile[filename][read_slice]
         elif "neural_data" in filename:
             if "neural_data" not in data_dict:
                 data_dict["neural_data"] = {}
@@ -237,8 +254,8 @@ def read_from_npz(
             data_dict["neural_data"][key] = npzfile[filename][read_slice]
         else:
             data_dict[filename] = npzfile[filename][read_slice]
-    trajectory_batch = TrajectoryBatch(**data_dict)
-    return trajectory_batch
+    data_batch = DataBatch(**data_dict)
+    return data_batch
 
 
 def check_data_shape_npz(
@@ -247,7 +264,7 @@ def check_data_shape_npz(
     file_path = Path(file_path)
     assert file_path.exists(), f"File {file_path} not found"
     with zipfile.ZipFile(file_path) as archive:
-        npy = archive.open("trajectories.npy")
+        npy = archive.open("states.npy")
         version = np.lib.format.read_magic(npy)
         shape, *_ = np.lib.format._read_array_header(npy, version)
     b, t, *_ = shape
@@ -256,11 +273,12 @@ def check_data_shape_npz(
 
 # nwb
 
+# EXPERIMENTAL!!! DO NOT RECOMMEND!!!
+
 
 def write_to_nwb(
     file_path: Union[Path, str],
-    trajectory_batch: TrajectoryBatch,
-    generator=None,
+    data_batch: DataBatch,
     # TODO: support `include`
     dt: float = 0.01,
     inter_trial_interval: int = 10,
@@ -288,7 +306,7 @@ def write_to_nwb(
     )
 
     # TODO: support masked arrays
-    trial_count, trial_length, _ = trajectory_batch.trajectories.shape
+    trial_count, trial_length, _ = data_batch.states.shape
     trial_start_idxs = np.arange(trial_count) * (trial_length + inter_trial_interval)
     timestamps = np.concatenate(
         [(np.arange(trial_length) + start_idx) for start_idx in trial_start_idxs],
@@ -297,8 +315,8 @@ def write_to_nwb(
     timestamps = np.round(timestamps * dt, 9)
     flatten = lambda arr: arr.reshape(-1, arr.shape[-1])
 
-    if trajectory_batch.trial_info is not None:
-        for col in trajectory_batch.trial_info.columns:
+    if data_batch.trial_info is not None:
+        for col in data_batch.trial_info.columns:
             if col in ["start_time", "stop_time"]:
                 raise AssertionError  # TODO: have a workaround
             nwbfile.add_trial_column(name=col, description=col)
@@ -308,8 +326,8 @@ def write_to_nwb(
             "start_time": round(trial_start_idxs[i] * dt, 9),
             "stop_time": round((trial_start_idxs[i] + trial_length) * dt, 9),
         }
-        if trajectory_batch.trial_info is not None:
-            trial_info_dict = trajectory_batch.trial_info.iloc[i].to_dict()
+        if data_batch.trial_info is not None:
+            trial_info_dict = data_batch.trial_info.iloc[i].to_dict()
             for key in trial_info_dict.keys():
                 if key.endswith("_time"):
                     trial_info_dict[key] = (
@@ -319,12 +337,12 @@ def write_to_nwb(
         nwbfile.add_trial(**trial_data)
 
     simulation_data = []
-    for field in ["trajectories", "inputs", "outputs"]:
-        if trajectory_batch.__dict__.get(field, None) is not None:
+    for field in ["states", "inputs", "outputs"]:
+        if data_batch.__dict__.get(field, None) is not None:
             ts = TimeSeries(
                 name=field,
                 data=H5DataIO(
-                    flatten(trajectory_batch.__dict__[field]),
+                    flatten(data_batch.__dict__[field]),
                     compression="gzip",
                 ),
                 timestamps=timestamps,
@@ -332,12 +350,12 @@ def write_to_nwb(
                 unit="n/a",
             )
             simulation_data.append(ts)
-    if trajectory_batch.other is not None:
-        for field in trajectory_batch.other.keys():
+    if data_batch.temporal_data is not None:
+        for field in data_batch.temporal_data.keys():
             ts = TimeSeries(
                 name=field,
                 data=H5DataIO(
-                    flatten(trajectory_batch.other[field]),
+                    flatten(data_batch.temporal_data[field]),
                     compression="gzip",
                 ),
                 timestamps=timestamps,
@@ -351,10 +369,10 @@ def write_to_nwb(
     simulation_module.add(simulation_data)
 
     neural_data = []
-    if trajectory_batch.neural_data is not None:
-        for field in trajectory_batch.neural_data.keys():
+    if data_batch.neural_data is not None:
+        for field in data_batch.neural_data.keys():
             if field == "spikes":
-                spikes = trajectory_batch.neural_data["spikes"].astype(int)
+                spikes = data_batch.neural_data["spikes"].astype(int)
                 spikes = flatten(spikes)
                 n_channels = spikes.shape[-1]
                 device = nwbfile.create_device(
@@ -390,7 +408,7 @@ def write_to_nwb(
                 ts = TimeSeries(
                     name=field,
                     data=H5DataIO(
-                        flatten(trajectory_batch.neural_data[field]),
+                        flatten(data_batch.neural_data[field]),
                         compression="gzip",
                     ),
                     timestamps=timestamps,
@@ -411,13 +429,13 @@ def write_to_nwb(
 # TODO: def read_from_nwb
 
 
-# benchmark
+# lfads-torch
 
 
-def write_to_benchmark(
+def write_to_lfads(
     file_path: Union[Path, str],
-    trajectory_batch: TrajectoryBatch,
-    generator=None,
+    data_batch: DataBatch,
+    trial_info_as_csv: bool = False,
     overwrite: bool = False,
     trial_split_ratio: Union[list, tuple] = (0.8, 0.2),
     neuron_split_ratio: Union[list, tuple] = (1.0, 0.0),
@@ -441,18 +459,20 @@ def write_to_benchmark(
     neuron_split_ratio = np.array(neuron_split_ratio)
     neuron_split_ratio /= neuron_split_ratio.sum()
 
-    assert trajectory_batch.neural_data is not None
+    assert data_batch.neural_data is not None
     assert (
-        "spikes" in trajectory_batch.neural_data
+        "spikes" in data_batch.neural_data
     )  # TODO: allow mapping what fields to go recon data, etc.
-    assert "rates" in trajectory_batch.neural_data
+    assert "rates" in data_batch.neural_data
 
-    trial_inds = np.arange(len(trajectory_batch))
+    trial_inds = np.arange(len(data_batch))
     train_trial_inds, valid_trial_inds = train_test_split(
         trial_inds, test_size=trial_split_ratio[-1], random_state=seed
     )
+    train_trial_inds = np.sort(train_trial_inds)
+    valid_trial_inds = np.sort(valid_trial_inds)
 
-    neuron_inds = np.arange(trajectory_batch.neural_data["spikes"].shape[-1])
+    neuron_inds = np.arange(data_batch.neural_data["spikes"].shape[-1])
     if neuron_split_ratio[-1] == 0.0:
         heldin_neuron_inds = all_neuron_inds = neuron_inds
     else:
@@ -464,68 +484,78 @@ def write_to_benchmark(
     with h5py.File(file_path, "w") as h5f:
         h5f.create_dataset(
             "train_encod_data",
-            data=trajectory_batch.neural_data["spikes"][train_trial_inds][
+            data=data_batch.neural_data["spikes"][train_trial_inds][
                 :, :, heldin_neuron_inds
             ],
         )
         h5f.create_dataset(
             "valid_encod_data",
-            data=trajectory_batch.neural_data["spikes"][valid_trial_inds][
+            data=data_batch.neural_data["spikes"][valid_trial_inds][
                 :, :, heldin_neuron_inds
             ],
         )
 
         h5f.create_dataset(
             "train_recon_data",
-            data=trajectory_batch.neural_data["spikes"][train_trial_inds][
+            data=data_batch.neural_data["spikes"][train_trial_inds][
                 :, :, all_neuron_inds
             ],
         )
         h5f.create_dataset(
             "valid_recon_data",
-            data=trajectory_batch.neural_data["spikes"][valid_trial_inds][
+            data=data_batch.neural_data["spikes"][valid_trial_inds][
                 :, :, all_neuron_inds
             ],
         )
 
         h5f.create_dataset(
-            "train_activity",
-            data=trajectory_batch.neural_data["rates"][train_trial_inds][
+            "train_truth",
+            data=data_batch.neural_data["rates"][train_trial_inds][
                 :, :, all_neuron_inds
             ],
         )
         h5f.create_dataset(
-            "valid_activity",
-            data=trajectory_batch.neural_data["rates"][valid_trial_inds][
+            "valid_truth",
+            data=data_batch.neural_data["rates"][valid_trial_inds][
                 :, :, all_neuron_inds
             ],
         )
+        h5f.create_dataset("conversion_factor", data=1.0)
 
-        h5f.create_dataset(
-            "train_latents", data=trajectory_batch.trajectories[train_trial_inds]
-        )
-        h5f.create_dataset(
-            "valid_latents", data=trajectory_batch.trajectories[valid_trial_inds]
-        )
+        # h5f.create_dataset(
+        #     "train_activity",
+        #     data=data_batch.neural_data["rates"][train_trial_inds][
+        #         :, :, all_neuron_inds
+        #     ],
+        # )
+        # h5f.create_dataset(
+        #     "valid_activity",
+        #     data=data_batch.neural_data["rates"][valid_trial_inds][
+        #         :, :, all_neuron_inds
+        #     ],
+        # )
 
-        if trajectory_batch.inputs is not None:
-            h5f.create_dataset(
-                "train_inputs", data=trajectory_batch.inputs[train_trial_inds]
-            )
-            h5f.create_dataset(
-                "valid_inputs", data=trajectory_batch.inputs[valid_trial_inds]
-            )
+        h5f.create_dataset("train_latents", data=data_batch.states[train_trial_inds])
+        h5f.create_dataset("valid_latents", data=data_batch.states[valid_trial_inds])
+
+        if data_batch.inputs is not None:
+            h5f.create_dataset("train_inputs", data=data_batch.inputs[train_trial_inds])
+            h5f.create_dataset("valid_inputs", data=data_batch.inputs[valid_trial_inds])
 
         h5f.create_dataset("train_inds", data=train_trial_inds)
         h5f.create_dataset("valid_inds", data=valid_trial_inds)
 
-        h5f.create_dataset("perm_neurons", data=all_neuron_inds)
-        if generator is not None:
-            sampler_params = generator.data_sampler.get_params()
-            for key, val in sampler_params.items():
-                h5f.create_dataset(
-                    (key if key != "proj_weights" else "readout"), data=val
-                )
+        h5f.create_dataset("channel_order", data=all_neuron_inds)
+
+        sampler_params = data_batch.general_data.get("data_sampler", dict())
+        for key, val in sampler_params.items():
+            h5f.create_dataset((key if key != "proj_weights" else "readout"), data=val)
+
+        if data_batch.trial_info is not None and trial_info_as_csv:
+            df = data_batch.trial_info.copy()
+            split = ["train" if i in train_trial_inds else "valid" for i in len(df)]
+            df["split"] = split
+            df.to_csv(file_path.stem + "_trial_info.csv")
 
 
 # utils
@@ -599,9 +629,11 @@ def h5_to_dict(
     return h5_dict
 
 
-def flatten_dict_keys(d, prefix=""):
+def flatten_dict_keys(d, prefix="", exclude=[]):
     keys = []
     for key in d.keys():
+        if key in exclude:
+            continue
         if isinstance(d[key], dict):
             keys += flatten_dict_keys(d[key], prefix=f"{prefix}{key}.")
         else:

@@ -22,7 +22,7 @@ from synergen.systems.base import CoupledSystem
 from synergen.systems.models.base import Model
 from synergen.systems.envs.gym import GymEnvironment
 from synergen.embedding.pca import PCA
-from synergen.synthetic_data.lin_nonlin import LinearNonlinearPoisson
+from synergen.neural_data.lin_nonlin import LinearNonlinearPoisson
 
 
 # load stuff from the run
@@ -153,15 +153,15 @@ datagen = NeuralDataGenerator(
 
 # manually make trial info for convenience
 
-task_env_cp = copy.deepcopy(task_env)
-n_traj = 1000
-joint_list = []
-goal_list = []
-for _ in range(n_traj):
-    obs, info = task_env_cp.reset(batch_size=1)
-    joint_list.append(np.squeeze(info["states"]["joint"]))
-    goal_list.append(np.squeeze(info["goal"]))
-trial_info = pd.DataFrame({"joints": joint_list, "goal": goal_list})
+# task_env_cp = copy.deepcopy(task_env)
+# n_traj = 1000
+# joint_list = []
+# goal_list = []
+# for _ in range(n_traj):
+#     obs, info = task_env_cp.reset(batch_size=1)
+#     joint_list.append(np.squeeze(info["states"]["joint"]))
+#     goal_list.append(np.squeeze(info["goal"]))
+# trial_info = pd.DataFrame({"joints": joint_list, "goal": goal_list})
 
 
 # run simulation
@@ -172,9 +172,9 @@ trajectory_kwargs = dict(
         dist="zeros",
     ),
     simulation_kwargs=dict(),
-    trial_kwargs=dict(
-        trial_info=trial_info,
-    ),
+    # trial_kwargs=dict(
+    #     trial_info=trial_info,
+    # ),
 )
 
 export_kwargs = dict(

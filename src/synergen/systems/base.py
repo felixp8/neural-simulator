@@ -5,7 +5,7 @@ from dataclasses import replace
 
 from .models.base import Model
 from .envs.base import Environment
-from ..utils.types import TrajectoryBatch, stack_trajectory_batches
+from ..utils.types import DataBatch, stack_data_batches
 
 
 class System:
@@ -19,7 +19,7 @@ class System:
         if isinstance(seed, np.random.Generator):
             self.rng = seed
         else:
-            self.rng = np.random.default_rng(seed)
+            self.rng = np.random.default_rng(seed=seed)
 
     def sample_trajectories(
         self,
@@ -27,19 +27,19 @@ class System:
         batch_size: Optional[int] = None,
         *args,
         **kwargs,
-    ) -> TrajectoryBatch:
-        """Main class method to implement, samples trajectories from system.
+    ) -> DataBatch:
+        """Main class method to implement, samples states from system.
 
         Returns
         -------
-        TrajectoryBatch
-            NamedTuple containing sampled trajectories, as well as other
+        DataBatch
+            NamedTuple containing sampled states, as well as other
             data like trial info, inputs, etc. if available
         """
         raise NotImplementedError
 
     def get_params(self):
-        return dict(system_name=self.__class__.__name__)
+        return dict(name=self.__class__.__name__)
 
 
 class AutonomousSystem(System):
@@ -61,32 +61,29 @@ class AutonomousSystem(System):
         ic_kwargs: dict = {},
         simulation_kwargs: dict = {},
         batch_size: Optional[int] = None,
-    ) -> TrajectoryBatch:
+    ) -> DataBatch:
         batch_size = batch_size or n_traj
         if self.model.max_batch_size is not None:
             batch_size = min(batch_size, self.model.max_batch_size)
 
         ics = self.model.sample_ics(n=n_traj, **ic_kwargs)  # b x d
-        save_ics = np.unique(ics, axis=0).shape[0] > 1
 
-        trajectory_batches = []
+        data_batches = []
         for i in range(0, n_traj, batch_size):
             batch_ics = ics[i : (i + batch_size)]
-            trajectories, outputs, _ = self.model.simulate(
+            states, outputs, actions, td = self.model.simulate(
                 ics=batch_ics, **simulation_kwargs
             )  # b x t x d
-            trajectory_batches.append(
-                TrajectoryBatch(
-                    trajectories=trajectories,
+            data_batches.append(
+                DataBatch(
+                    states=states,
                     outputs=outputs,
+                    temporal_data=td,
                 )
             )
 
-        trajectory_batch = stack_trajectory_batches(trajectory_batches)
-        if save_ics:
-            trial_info = pd.DataFrame({"ic": ics})
-            trajectory_batch = replace(trajectory_batch, trial_info=trial_info)
-        return trajectory_batch
+        data_batch = stack_data_batches(data_batches)
+        return data_batch
 
 
 class NonAutonomousSystem(System):
@@ -127,7 +124,7 @@ class CoupledSystem(NonAutonomousSystem):
         simulation_kwargs: dict = {},
         batch_size: Optional[int] = None,
         max_steps: int = 1000,
-    ) -> TrajectoryBatch:
+    ) -> DataBatch:
         batch_size = batch_size or n_traj
         if self.model.max_batch_size is not None:
             batch_size = min(batch_size, self.model.max_batch_size)
@@ -136,39 +133,22 @@ class CoupledSystem(NonAutonomousSystem):
 
         ics = self.model.sample_ics(n=n_traj, **ic_kwargs)  # b x d
         trial_info = self.env.sample_trial_info(n=n_traj, **trial_kwargs)
-        save_ics = np.unique(ics, axis=0).shape[0] > 1
 
-        trajectory_batches = []
+        data_batches = []
         for n in range(0, len(trial_info), batch_size):
             batch_trial_info = trial_info.iloc[n : (n + batch_size)].copy()
             batch_ics = ics[n : (n + batch_size)]
-            (
-                trajectories,
-                inputs,
-                outputs,
-                other,
-                batch_trial_info,
-            ) = self.simulate_coupled_system(
+            data_batch = self.simulate_coupled_system(
                 ics=batch_ics,
                 trial_info=batch_trial_info,
                 simulation_kwargs=simulation_kwargs,
                 max_steps=max_steps,
             )
 
-            trajectory_batches.append(
-                TrajectoryBatch(
-                    trajectories=trajectories,
-                    trial_info=batch_trial_info,
-                    inputs=inputs,
-                    outputs=outputs,
-                    other=other,
-                )
-            )
+            data_batches.append(data_batch)
 
-        trajectory_batch = stack_trajectory_batches(trajectory_batches)
-        if save_ics:
-            trajectory_batch.trial_info.loc[:, "ic"] = list(ics)
-        return trajectory_batch
+        data_batch = stack_data_batches(data_batches)
+        return data_batch
 
     def simulate_coupled_system(
         self,
@@ -176,8 +156,8 @@ class CoupledSystem(NonAutonomousSystem):
         trial_info: pd.DataFrame,
         simulation_kwargs: dict = {},
         max_steps: int = 1000,
-    ):
-        info, inputs, other, env_state = self.env.simulate(
+    ) -> DataBatch:
+        info, inputs, env_td, env_state = self.env.simulate(
             trial_info=trial_info,
             actions=None,
             env_state=None,
@@ -197,12 +177,12 @@ class CoupledSystem(NonAutonomousSystem):
         data_list = []
         mask_list = [env_done]
         while not batch_done:
-            trajectories, outputs, actions = self.model.simulate(
+            states, outputs, actions, model_td = self.model.simulate(
                 ics=states,
                 inputs=inputs,
                 **simulation_kwargs,
             )  # b x t x d
-            info, next_inputs, other, env_state = self.env.simulate(
+            info, next_inputs, env_td, env_state = self.env.simulate(
                 trial_info=None,
                 actions=actions,
                 env_state=env_state,
@@ -213,7 +193,8 @@ class CoupledSystem(NonAutonomousSystem):
             batch_done = np.all(env_done)
             info.drop("done", axis=1, inplace=True)
 
-            data_list.append((trajectories, inputs, outputs, other))
+            td = {**model_td, **env_td}
+            data_list.append((states, inputs, outputs, td))
             info.index = trial_info.index
             trial_info.loc[trial_info.index, info.columns] = info
 
@@ -246,9 +227,14 @@ class CoupledSystem(NonAutonomousSystem):
                     )
                 return stacked
 
-        return tuple([stack_data(arr_list) for arr_list in zip(*data_list)]) + (
-            trial_info,
+        data_batch = DataBatch(
+            states=stack_data(data_list[0]),
+            inputs=stack_data(data_list[1]),
+            outputs=stack_data(data_list[2]),
+            temporal_data=stack_data(data_list[3]),
+            trial_info=trial_info,
         )
+        return data_batch
 
 
 class UncoupledSystem(NonAutonomousSystem):
@@ -270,37 +256,31 @@ class UncoupledSystem(NonAutonomousSystem):
         trial_kwargs: dict = {},
         simulation_kwargs: dict = {},
         batch_size: Optional[int] = None,
-    ) -> TrajectoryBatch:
+    ) -> DataBatch:
         batch_size = batch_size or n_traj
         if self.model.max_batch_size is not None:
             batch_size = min(batch_size, self.model.max_batch_size)
 
         ics = self.model.sample_ics(n=n_traj, **ic_kwargs)  # b x d
-        trial_info, inputs, other = self.env.sample_inputs(n=n_traj, **trial_kwargs)
-        save_ics = np.unique(ics, axis=0).shape[0] > 1
+        trial_info, inputs, env_td = self.env.sample_inputs(n=n_traj, **trial_kwargs)
 
-        trajectory_batches = []
+        data_batches = []
         for i in range(0, n_traj, batch_size):
             batch_ics = ics[i : (i + batch_size)]
             batch_inputs = inputs[i : (i + batch_size)]
             batch_trial_info = trial_info.iloc[i : (i + batch_size)]
-            trajectories, outputs, _ = self.model.simulate(
+            states, outputs, actions, model_td = self.model.simulate(
                 ics=batch_ics, inputs=batch_inputs, **simulation_kwargs
             )  # b x t x d
-            trajectory_batches.append(
-                TrajectoryBatch(
-                    trajectories=trajectories,
-                    trial_info=batch_trial_info,
-                    inputs=batch_inputs,
+            data_batches.append(
+                DataBatch(
+                    states=states,
                     outputs=outputs,
+                    temporal_data=model_td,
                 )
             )
 
-        trajectory_batch = stack_trajectory_batches(trajectory_batches)
-        trajectory_batch = replace(trajectory_batch, other=other)
-        if save_ics:
-            import pdb
-
-            pdb.set_trace()
-            trajectory_batch.trial_info.loc[:, "ic"] = list(ics)
-        return trajectory_batch
+        data_batch = stack_data_batches(data_batches)
+        data_batch = replace(data_batch, trial_info=trial_info, inputs=inputs)
+        data_batch.temporal_data.update(env_td)
+        return data_batch

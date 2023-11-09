@@ -5,18 +5,23 @@ from typing import Optional, Union, Callable, Any
 class Model:
     """Base class for all dynamics models"""
 
-    def __init__(self, n_dim: int, max_batch_size: Optional[int] = None, seed: Optional[Union[int, np.random.Generator]] = None):
+    def __init__(
+        self,
+        n_dim: int,
+        max_batch_size: Optional[int] = None,
+        seed: Optional[Union[int, np.random.Generator]] = None,
+    ):
         super().__init__()
         self.n_dim = n_dim
         self.max_batch_size = max_batch_size
         self.seed(seed)
-    
+
     def seed(self, seed: Optional[Union[int, np.random.Generator]] = None):
         if isinstance(seed, np.random.Generator):
             self.rng = seed
         else:
-            self.rng = np.random.default_rng(seed)
-    
+            self.rng = np.random.default_rng(seed=seed)
+
     def sample_ics(
         self,
         ics: Optional[np.ndarray] = None,
@@ -31,7 +36,7 @@ class Model:
         Parameters
         ----------
         ics : np.ndarray, optional
-            If provided, overrides the sampling operation and just 
+            If provided, overrides the sampling operation and just
             returns these fixed ICs
         n : int, optional
             Number of samples to generate
@@ -42,7 +47,7 @@ class Model:
             specifying the shape of the sampled array
         dist_params : dict, optional
             Parameters for the generating samples from `dist`
-        
+
         Returns
         -------
         ics : np.ndarray
@@ -62,14 +67,14 @@ class Model:
         else:
             raise ValueError
         return ics
-    
+
     def simulate(
-        self, 
-        ics: Optional[np.ndarray] = None, 
+        self,
+        ics: Optional[np.ndarray] = None,
         inputs: Optional[np.ndarray] = None,
         *args,
         **kwargs,
-    ) -> tuple[np.ndarray, Union[np.ndarray, None], Union[Any, None]]:
+    ) -> tuple[np.ndarray, Optional[np.ndarray], Any, Optional[dict]]:
         """Simulate the dynamics model forward in time,
         given initial conditions and potentially inputs
 
@@ -84,7 +89,7 @@ class Model:
             with shape (B,T,I) where B is batch size/trial
             count, T is number of timesteps, and I is
             input dimensionality
-        
+
         Returns
         -------
         trajectories : np.ndarray
@@ -95,6 +100,8 @@ class Model:
         action : any, optional
             System actions on the environment, can
             be any format expected by associated environment
+        temporal_data : dict, optional
+            Any other time-varying data, with shape (B,T,-1),
+            to save from the simulation
         """
         raise NotImplementedError
-    
