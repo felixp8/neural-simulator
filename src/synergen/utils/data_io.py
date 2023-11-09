@@ -41,7 +41,7 @@ def write_file(
             overwrite=overwrite,
             **kwargs,
         )
-    if file_format == "benchmark":
+    if file_format == "lfads":
         return write_to_lfads(
             file_path=file_path,
             data_batch=data_batch,
@@ -103,7 +103,9 @@ def write_to_hdf5(
             h5f.create_dataset(name="outputs", data=data_batch.outputs)
         if "trial_info" in include and data_batch.trial_info is not None:
             if trial_info_as_csv:
-                data_batch.trial_info.to_csv(file_path.stem + "_trial_info.csv")
+                data_batch.trial_info.to_csv(
+                    file_path.parent / (file_path.stem + "_trial_info.csv"), index=False
+                )
             else:
                 ti_as_array = df_to_sarray(data_batch.trial_info)
                 if ti_as_array is not None:
@@ -138,7 +140,9 @@ def read_from_hdf5(
 ):
     file_path = Path(file_path)
     assert file_path.exists(), f"File {file_path} not found"
-    trial_info_as_csv = Path(file_path.stem + "_trial_info.csv").exists()
+    trial_info_as_csv = Path(
+        file_path.parent / (file_path.stem + "_trial_info.csv")
+    ).exists()
     with h5py.File(file_path, "r") as h5f:
         states = h5f["states"][read_slice]
         inputs = h5f["inputs"][read_slice] if "inputs" in h5f.keys() else None
@@ -154,7 +158,9 @@ def read_from_hdf5(
             else None
         )
         if trial_info_as_csv:
-            trial_info = pd.read_csv(file_path.stem + "_trial_info.csv")
+            trial_info = pd.read_csv(
+                file_path.parent / (file_path.stem + "_trial_info.csv")
+            )
         else:
             trial_info = (
                 sarray_to_df(h5f["trial_info"][read_slice])
@@ -206,7 +212,9 @@ def write_to_npz(
         data_dict["outputs"] = data_batch.outputs
     if "trial_info" in include and data_batch.trial_info is not None:
         if trial_info_as_csv:
-            data_batch.trial_info.to_csv(file_path.stem + "_trial_info.csv")
+            data_batch.trial_info.to_csv(
+                file_path.parent / (file_path.stem + "_trial_info.csv"), index=False
+            )
         else:
             ti_as_array = df_to_sarray(data_batch.trial_info)
             if ti_as_array is not None:
@@ -229,7 +237,9 @@ def read_from_npz(
 ):
     file_path = Path(file_path)
     assert file_path.exists(), f"File {file_path} not found"
-    trial_info_as_csv = Path(file_path.stem + "_trial_info.csv").exists()
+    trial_info_as_csv = Path(
+        file_path.parent / (file_path.stem + "_trial_info.csv")
+    ).exists()
     if read_slice != ():
         print(
             "warning: specifying read slices when reading from npz does not save memory, as "
@@ -238,7 +248,9 @@ def read_from_npz(
     npzfile = np.load(file_path)
     data_dict = {}
     if trial_info_as_csv:
-        data_dict["trial_info"] = pd.read_csv(file_path.stem + "_trial_info.csv")
+        data_dict["trial_info"] = pd.read_csv(
+            file_path.parent / (file_path.stem + "_trial_info.csv")
+        )
     for filename in npzfile.files:
         if filename == "trial_info":  # could overwrite `trial_info_as_csv`. warn?
             data_dict["trial_info"] = sarray_to_df(npzfile[filename]).iloc[read_slice]
@@ -439,6 +451,7 @@ def write_to_lfads(
     overwrite: bool = False,
     trial_split_ratio: Union[list, tuple] = (0.8, 0.2),
     neuron_split_ratio: Union[list, tuple] = (1.0, 0.0),
+    extra_fields: list[str] = [],
     seed: Optional[int] = None,
 ):
     file_path = Path(file_path)
@@ -553,9 +566,34 @@ def write_to_lfads(
 
         if data_batch.trial_info is not None and trial_info_as_csv:
             df = data_batch.trial_info.copy()
-            split = ["train" if i in train_trial_inds else "valid" for i in len(df)]
+            split = [
+                "valid" if i in valid_trial_inds else "train" for i in range(len(df))
+            ]
             df["split"] = split
-            df.to_csv(file_path.stem + "_trial_info.csv")
+            df.to_csv(
+                file_path.parent / (file_path.stem + "_trial_info.csv"), index=False
+            )
+
+        all_fields = flatten_dict_keys(data_batch.__dict__)
+        for field in extra_fields:
+            if field not in all_fields:
+                raise ValueError(
+                    f"Field {field} not found in DataBatch. Expecting one of {all_fields}"
+                )
+            if "." in field:
+                group, _, field = field.partition(".")
+                data = data_batch.__dict__[group][field]
+                if field in h5f.keys():  # dumb
+                    field = f"{group}_field"
+                h5f.create_dataset("train_" + field, data=data[train_trial_inds])
+                h5f.create_dataset("valid_" + field, data=data[valid_trial_inds])
+            else:
+                h5f.create_dataset(
+                    "train_" + field, data=data_batch.__dict__[field][train_trial_inds]
+                )
+                h5f.create_dataset(
+                    "valid_" + field, data=data_batch.__dict__[field][valid_trial_inds]
+                )
 
 
 # utils
