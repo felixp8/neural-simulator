@@ -35,15 +35,19 @@ class Parabolic2(Embedding):
         self.scale = np.asarray(scale)
         self.center = np.asarray(center)
         self.offset = np.asarray(offset)
-        self.rotation = (
-            special_ortho_group.rvs(dim=2, random_state=seed) if rotate else None
-        )
+        self.rotate = rotate
+        self.rotation = None
 
     def transform(self, X: np.ndarray) -> np.ndarray:
         assert (
             X.shape[-1] == 2
         ), f"Size of last dimension of `points` must be 2, got {X.shape[-1]}"
-        if self.rotation is not None:
+        if self.rotate:
+            if self.rotation is None:
+                self.rotation = special_ortho_group.rvs(
+                    dim=2,
+                    random_state=self.rng.integers(low=0, high=4294967295, size=1),
+                )
             X = X @ self.rotation
         expand = lambda arr: np.expand_dims(arr, axis=tuple(range(X.ndim - 1)))
         z = np.sum(np.square(expand(self.scale) * (X - expand(self.center))), axis=-1)
@@ -61,3 +65,10 @@ class Parabolic2(Embedding):
         if self.rotation is not None:
             params.update(dict(rotation=self.rotation))
         return params
+
+    def set_params(self, params: dict) -> None:
+        super().set_params(params)
+        self.scale = params["scale"]
+        self.center = params["center"]
+        self.rtation = params.get("rotation", None)
+        return

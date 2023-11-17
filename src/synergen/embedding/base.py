@@ -51,7 +51,12 @@ class Embedding:
 
     def get_params(self) -> dict:
         """Returns various parameters of Embedding object to save"""
-        return dict(embedding_name=self.__class__.__name__)
+        return dict(name=self.__class__.__name__)
+
+    def set_params(self, params: dict) -> None:
+        assert "name" in params
+        assert params["name"] == self.__class__.__name__
+        return
 
 
 class SklearnEmbedding(Embedding):
@@ -114,6 +119,28 @@ class SklearnEmbedding(Embedding):
         embedded = self.estimator.transform(X.reshape(-1, X.shape[-1]))
         embedded = embedded.reshape(*X.shape[:-1], embedded.shape[-1])
         return embedded
+
+    def get_params(self) -> dict:
+        params = super().get_params()
+        params.update(self.estimator.get_params())
+        params.update(
+            {
+                k: v
+                for k, v in self.estimator.__dict__.items()
+                if k.endswith("_") and not k.startswith("__")
+            }
+        )
+        return params
+
+    def set_params(self, params: dict) -> None:
+        super().set_params(params)
+        params.pop("name")
+        for k, v in params.items():
+            if k.endswith("_") and not k.startswith("__"):
+                setattr(self.estimator, k, v)
+                params.pop(k)
+        self.estimator.set_params(params)
+        return
 
 
 class EmbeddingStack(Embedding):
@@ -195,3 +222,9 @@ class EmbeddingStack(Embedding):
             {f"Embedding{i:02d}": e.get_params() for i, e in enumerate(self.embeddings)}
         )
         return params
+
+    def set_params(self, params: dict) -> None:
+        super().set_params(params)
+        for i, e in enumerate(self.embeddings):
+            e.set_params(params[f"Embedding{i:02d}"])
+        return

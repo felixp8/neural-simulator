@@ -90,3 +90,10 @@ class Subsample(Embedding):
         if self.subsampled_dims is not None:
             params.update(dict(subsampled_dims=self.subsampled_dims))
         return params
+
+    def set_params(self, params: dict) -> None:
+        super().set_params(params)
+        self.n_dim = params["n_dim"]
+        self.subsample_method = params["subsample_method"]
+        self.subsampled_dims = params.get("subsampled_dims")
+        return

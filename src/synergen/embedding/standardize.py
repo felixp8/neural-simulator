@@ -25,13 +25,3 @@ class StandardScaler(SklearnEmbedding):
         estimator = StandardScaler(**kwargs)
         super().__init__(estimator=estimator, seed=seed)
         self.kwargs = kwargs
-
-    def get_params(self) -> dict:
-        params = super().get_params()
-        params.update(**self.kwargs)
-        if self.fit:
-            if self.estimator.scale_ is not None:
-                params.update(dict(scale=self.estimator.scale_))
-            if self.estimator.mean_ is not None:
-                params.update(dict(mean=self.estimator.mean_))
-        return params

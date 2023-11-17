@@ -24,6 +24,7 @@ class NeurogymEnvironment(GymEnvironment):
         n: Optional[int] = None,
         sample_space: Union[SampleSpace, dict] = {},
         stratified: bool = False,
+        temporal_data_fields: list[str] = [],
     ):
         if inputs is not None:
             return super().sample_inputs(trial_info=trial_info, ipnuts=inputs, n=n)
@@ -33,6 +34,7 @@ class NeurogymEnvironment(GymEnvironment):
             )
         inputs = []
         targets = []
+        temporal_data = {field: [] for field in temporal_data_fields}
         self.make_batch_envs(batch_size=min(len(trial_info), self.max_batch_size))
         for i in trial_info.index:
             obs, info = self.reset_envs(trial_info.loc[[i], :])
@@ -40,11 +42,16 @@ class NeurogymEnvironment(GymEnvironment):
                 trial_info.loc[i, list(info.keys())] = list(info.values())
             inputs.append(self.batch_envs.ob)
             targets.append(self.batch_envs.gt)
+            for field in temporal_data_fields:
+                temporal_data[field].append(getattr(self.batch_envs, field))
         inputs = np.stack(inputs, axis=0)
         targets = np.stack(targets, axis=0)
+        for field in temporal_data_fields:
+            temporal_data[field] = np.stack(temporal_data[field], axis=0)
         if len(targets.shape) == 2:
             targets = targets[:, :, None]
-        return trial_info, inputs, {"targets": targets}
+        temporal_data["targets"] = targets
+        return trial_info, inputs, temporal_data
 
     def reset_envs(
         self,

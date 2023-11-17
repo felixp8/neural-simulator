@@ -41,6 +41,11 @@ class System:
     def get_params(self):
         return dict(name=self.__class__.__name__)
 
+    def set_params(self, params: dict) -> None:
+        assert "name" in params
+        assert params["name"] == self.__class__.__name__
+        return
+
 
 class AutonomousSystem(System):
     """Dynamical system that does not receive external inputs"""

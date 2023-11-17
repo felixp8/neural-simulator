@@ -76,6 +76,7 @@ class LinearNonlinear(DataSampler):
         self,
         output_dim: int,
         input_dim: Optional[int] = None,
+        proj_weights: Optional[np.ndarray] = None,
         proj_weight_dist: Literal["normal", "uniform", "eye"] = "uniform",
         proj_weight_params: dict = {},
         normalize_proj: bool = False,
@@ -98,6 +99,9 @@ class LinearNonlinear(DataSampler):
             Number of input channels to expect. If not provided,
             `input_dim` is set dynamically on the first call to
             `sample` based on the input trajectories
+        proj_weights : np.ndarray, optional
+            Weights to use for readout projection weights, can be provided
+            if they are not to be sampled randomly.
         proj_weight_dist : {"normal", "uniform", "eye"}, default: "uniform"
             Noise distribution to use for sampling readout projection weights.
             "eye" simply initializes the projection weights as a (likely truncated)
@@ -142,6 +146,7 @@ class LinearNonlinear(DataSampler):
         super().__init__(seed=seed)
         self.input_dim = input_dim
         self.output_dim = output_dim
+        self.proj_weights = proj_weights
         self.proj_weight_dist = proj_weight_dist
         self.proj_weight_params = proj_weight_params
         self.normalize_proj = normalize_proj
@@ -154,7 +159,6 @@ class LinearNonlinear(DataSampler):
         self.mean_center = mean_center
         self.rescale_variance = rescale_variance
         self.target_variance = target_variance
-        self.proj_weights = None
         self.orig_mean = None
         self.orig_std = None
         self.std_mean = None
@@ -232,20 +236,15 @@ class LinearNonlinear(DataSampler):
             dict(
                 nonlinearity=self.nonlinearity,
                 obs_noise_dist=self.obs_noise_dist,
+                output_dim=self.output_dim,
+                input_dim=self.input_dim,
+                proj_weight_dist=self.proj_weight_dist,
+                proj_weight_params=self.proj_weight_params,
+                normalize_proj=self.normalize_proj,
             )
         )
         if self.proj_weights is not None:
             params.update(dict(proj_weights=self.proj_weights))
-        else:
-            params.update(
-                dict(
-                    output_dim=self.output_dim,
-                    input_dim=self.input_dim,
-                    proj_weight_dist=self.proj_weight_dist,
-                    proj_weight_params=self.proj_weight_params,
-                    normalize_proj=self.normalize_proj,
-                )
-            )
         if self.orig_mean is not None:
             params.update(dict(orig_mean=self.orig_mean))
         if self.orig_std is not None:
@@ -253,6 +252,22 @@ class LinearNonlinear(DataSampler):
         if self.std_mean is not None:
             params.update(dict(std_mean=self.std_mean))
         return params
+
+    def set_params(self, params: dict) -> None:
+        super().set_params(params)
+        # can honestly just unpack params into __dict__
+        self.nonlinearity = params["nonlinearity"]
+        self.obs_noise_dist = params["obs_noise_dist"]
+        self.output_dim = params["output_dim"]
+        self.input_dim = params["input_dim"]
+        self.proj_weight_dist = params["proj_weight_dist"]
+        self.proj_weight_params = params["proj_weight_params"]
+        self.normalize_proj = params["normalize_proj"]
+        self.proj_weights = params.get("proj_weights")
+        self.orig_mean = params.get("orig_mean")
+        self.orig_std = params.get("orig_std")
+        self.std_mean = params.get("std_mean")
+        return
 
 
 class LinearNonlinearPoisson(LinearNonlinear):

@@ -63,6 +63,14 @@ class Torus1(Embedding):
         )
         return params
 
+    def set_params(self, params: dict) -> None:
+        super().set_params(params)
+        self.radius = params["radius"]
+        self.offset = params["offset"]
+        self.center = params["center"]
+        self.scale = params["scale"]
+        return
+
 
 class Torus2(Embedding):
     """Embed 2-d coordinates on a 2-Torus (aka a donut)"""
@@ -103,15 +111,19 @@ class Torus2(Embedding):
         self.offset = np.array(offset)
         self.center = np.array(center)
         self.scale = np.array(scale)
-        self.rotation = (
-            special_ortho_group.rvs(dim=2, random_state=seed) if rotate else None
-        )
+        self.rotate = rotate
+        self.rotation = None
 
     def transform(self, X: np.ndarray) -> np.ndarray:
         assert (
             X.shape[-1] == 2
         ), f"Size of last dimension of `X` must be 2, got {X.shape[-1]}"
-        if self.rotation is not None:
+        if self.rotate:
+            if self.rotation is None:
+                self.rotation = special_ortho_group.rvs(
+                    dim=2,
+                    random_state=self.rng.integers(low=0, high=4294967295, size=1),
+                )
             X = X @ self.rotation
         expand = lambda arr: np.expand_dims(arr, axis=tuple(range(X.ndim - 1)))
         X = expand(self.scale) * (X - expand(self.center))
@@ -142,3 +154,13 @@ class Torus2(Embedding):
         if self.rotation is not None:
             params.update(dict(rotation=self.rotation))
         return params
+
+    def set_params(self, params: dict) -> None:
+        super().set_params(params)
+        self.minor_radius = params["minor_radius"]
+        self.major_radius = params["major_radius"]
+        self.offset = params["offset"]
+        self.center = params["center"]
+        self.scale = params["scale"]
+        self.rotation = params.get("rotation")
+        return

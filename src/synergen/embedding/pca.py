@@ -30,15 +30,7 @@ class PCA(SklearnEmbedding):
         self.n_components = n_components
         self.kwargs = kwargs
 
-    def get_params(self) -> dict:
-        params = super().get_params()
-        params.update(dict(n_components=self.n_components))
-        params.update(**self.kwargs)
-        if self.fit:
-            params.update(
-                dict(
-                    components=self.estimator.components_,
-                    explained_variance=self.estimator.explained_variance_,
-                )
-            )
-        return params
+    def set_params(self, params: dict) -> None:
+        self.n_components = params["n_components_"]
+        super().set_params(params)
+        return
