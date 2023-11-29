@@ -96,11 +96,17 @@ def write_to_hdf5(
     include = include or flatten_dict_keys(data_batch.__dict__)
     with h5py.File(file_path, "w") as h5f:
         if "states" in include:
-            h5f.create_dataset(name="states", data=data_batch.states)
+            h5f.create_dataset(
+                name="states", data=data_batch.states, compression="gzip"
+            )
         if "inputs" in include and data_batch.inputs is not None:
-            h5f.create_dataset(name="inputs", data=data_batch.inputs)
+            h5f.create_dataset(
+                name="inputs", data=data_batch.inputs, compression="gzip"
+            )
         if "outputs" in include and data_batch.outputs is not None:
-            h5f.create_dataset(name="outputs", data=data_batch.outputs)
+            h5f.create_dataset(
+                name="outputs", data=data_batch.outputs, compression="gzip"
+            )
         if "trial_info" in include and data_batch.trial_info is not None:
             if trial_info_as_csv:
                 data_batch.trial_info.to_csv(
@@ -119,19 +125,21 @@ def write_to_hdf5(
                         )
                     keep_names = list(set(ti_as_array.dtype.names) - set(drop_names))
                     ti_as_array = repack_fields(ti_as_array[keep_names])
-                    h5f.create_dataset(name="trial_info", data=ti_as_array)
+                    h5f.create_dataset(
+                        name="trial_info", data=ti_as_array, compression="gzip"
+                    )
         for key, val in data_batch.temporal_data.items():
             if f"temporal_data.{key}" in include:
                 temporal_data = get_group(h5obj=h5f, group_name="temporal_data")
-                temporal_data.create_dataset(name=key, data=val)
+                temporal_data.create_dataset(name=key, data=val, compression="gzip")
         for key, val in data_batch.neural_data.items():
             if f"neural_data.{key}" in include:
                 neural_data = get_group(h5obj=h5f, group_name="neural_data")
-                neural_data.create_dataset(name=key, data=val)
+                neural_data.create_dataset(name=key, data=val, compression="gzip")
         for key, val in data_batch.general_data.items():
             if f"general_data.{key}" in include:
                 general_data = get_group(h5obj=h5f, group_name="general_data")
-                general_data.create_dataset(name=key, data=val)
+                general_data.create_dataset(name=key, data=val, compression="gzip")
 
 
 def read_from_hdf5(
@@ -447,6 +455,10 @@ def write_to_nwb(
 def write_to_lfads(
     file_path: Union[Path, str],
     data_batch: DataBatch,
+    data_field: str = "spikes",
+    truth_field: Optional[str] = "rates",
+    latent_field: Optional[str] = "states",
+    ext_input_field: Optional[str] = None,
     trial_info_as_csv: bool = False,
     overwrite: bool = False,
     trial_split_ratio: Union[list, tuple] = (0.8, 0.2),
@@ -473,10 +485,23 @@ def write_to_lfads(
     neuron_split_ratio /= neuron_split_ratio.sum()
 
     assert data_batch.neural_data is not None
-    assert (
-        "spikes" in data_batch.neural_data
-    )  # TODO: allow mapping what fields to go recon data, etc.
-    assert "rates" in data_batch.neural_data
+    assert data_field in data_batch.neural_data
+    if truth_field is not None:
+        assert truth_field in data_batch.neural_data
+    if latent_field is not None:  # TODO: clean up nested access
+        if "." in latent_field:
+            group, _, field = latent_field.partition(".")
+            assert group in data_batch.__dict__
+            assert field in data_batch.__dict__[group]
+        else:
+            assert latent_field in data_batch.__dict__
+    if ext_input_field is not None:
+        if "." in ext_input_field:
+            group, _, field = ext_input_field.partition(".")
+            assert group in data_batch.__dict__
+            assert field in data_batch.__dict__[group]
+        else:
+            assert ext_input_field in data_batch.__dict__
 
     trial_inds = np.arange(len(data_batch))
     train_trial_inds, valid_trial_inds = train_test_split(
@@ -497,72 +522,99 @@ def write_to_lfads(
     with h5py.File(file_path, "w") as h5f:
         h5f.create_dataset(
             "train_encod_data",
-            data=data_batch.neural_data["spikes"][train_trial_inds][
+            data=data_batch.neural_data[data_field][train_trial_inds][
                 :, :, heldin_neuron_inds
             ],
+            compression="gzip",
         )
         h5f.create_dataset(
             "valid_encod_data",
-            data=data_batch.neural_data["spikes"][valid_trial_inds][
+            data=data_batch.neural_data[data_field][valid_trial_inds][
                 :, :, heldin_neuron_inds
             ],
+            compression="gzip",
         )
 
         h5f.create_dataset(
             "train_recon_data",
-            data=data_batch.neural_data["spikes"][train_trial_inds][
+            data=data_batch.neural_data[data_field][train_trial_inds][
                 :, :, all_neuron_inds
             ],
+            compression="gzip",
         )
         h5f.create_dataset(
             "valid_recon_data",
-            data=data_batch.neural_data["spikes"][valid_trial_inds][
+            data=data_batch.neural_data[data_field][valid_trial_inds][
                 :, :, all_neuron_inds
             ],
+            compression="gzip",
         )
 
-        h5f.create_dataset(
-            "train_truth",
-            data=data_batch.neural_data["rates"][train_trial_inds][
-                :, :, all_neuron_inds
-            ],
-        )
-        h5f.create_dataset(
-            "valid_truth",
-            data=data_batch.neural_data["rates"][valid_trial_inds][
-                :, :, all_neuron_inds
-            ],
-        )
-        h5f.create_dataset("conversion_factor", data=1.0)
+        if truth_field is not None:
+            h5f.create_dataset(
+                "train_truth",
+                data=data_batch.neural_data[truth_field][train_trial_inds][
+                    :, :, all_neuron_inds
+                ],
+                compression="gzip",
+            )
+            h5f.create_dataset(
+                "valid_truth",
+                data=data_batch.neural_data[truth_field][valid_trial_inds][
+                    :, :, all_neuron_inds
+                ],
+                compression="gzip",
+            )
+            h5f.create_dataset("conversion_factor", data=1.0)
 
-        # h5f.create_dataset(
-        #     "train_activity",
-        #     data=data_batch.neural_data["rates"][train_trial_inds][
-        #         :, :, all_neuron_inds
-        #     ],
-        # )
-        # h5f.create_dataset(
-        #     "valid_activity",
-        #     data=data_batch.neural_data["rates"][valid_trial_inds][
-        #         :, :, all_neuron_inds
-        #     ],
-        # )
+        if latent_field is not None:
+            if "." in latent_field:
+                group, _, field = latent_field.partition(".")
+                data = data_batch.__dict__[group][field]
+            else:
+                data = data_batch.__dict__[field]
+            h5f.create_dataset(
+                "train_latents", data=data[train_trial_inds], compression="gzip"
+            )
+            h5f.create_dataset(
+                "valid_latents", data=data[valid_trial_inds], compression="gzip"
+            )
 
-        h5f.create_dataset("train_latents", data=data_batch.states[train_trial_inds])
-        h5f.create_dataset("valid_latents", data=data_batch.states[valid_trial_inds])
+        if ext_input_field is not None:
+            if "." in ext_input_field:
+                group, _, field = ext_input_field.partition(".")
+                data = data_batch.__dict__[group][field]
+            else:
+                data = data_batch.__dict__[field]
+            h5f.create_dataset(
+                "train_ext_input", data=data[train_trial_inds], compression="gzip"
+            )
+            h5f.create_dataset(
+                "valid_ext_input", data=data[valid_trial_inds], compression="gzip"
+            )
 
-        if data_batch.inputs is not None:
-            h5f.create_dataset("train_inputs", data=data_batch.inputs[train_trial_inds])
-            h5f.create_dataset("valid_inputs", data=data_batch.inputs[valid_trial_inds])
+        h5f.create_dataset("train_inds", data=train_trial_inds, compression="gzip")
+        h5f.create_dataset("valid_inds", data=valid_trial_inds, compression="gzip")
 
-        h5f.create_dataset("train_inds", data=train_trial_inds)
-        h5f.create_dataset("valid_inds", data=valid_trial_inds)
-
-        h5f.create_dataset("channel_order", data=all_neuron_inds)
+        h5f.create_dataset("channel_order", data=all_neuron_inds, compression="gzip")
 
         sampler_params = data_batch.general_data.get("data_sampler", dict())
-        for key, val in sampler_params.items():
-            h5f.create_dataset((key if key != "proj_weights" else "readout"), data=val)
+        if "proj_weights" in sampler_params:
+            h5f.create_dataset(
+                "readout", data=sampler_params["proj_weights"], compression="gzip"
+            )
+        if "orig_mean" in sampler_params:
+            h5f.create_dataset(
+                "orig_mean", data=sampler_params["orig_mean"], compression="gzip"
+            )
+        if "orig_std" in sampler_params:
+            h5f.create_dataset(
+                "orig_std", data=sampler_params["orig_std"], compression="gzip"
+            )
+        if "std_mean" in sampler_params:
+            h5f.create_dataset(
+                "std_mean", data=sampler_params["std_mean"], compression="gzip"
+            )
 
         if data_batch.trial_info is not None and trial_info_as_csv:
             df = data_batch.trial_info.copy()
@@ -585,14 +637,22 @@ def write_to_lfads(
                 data = data_batch.__dict__[group][field]
                 if field in h5f.keys():  # dumb
                     field = f"{group}_field"
-                h5f.create_dataset("train_" + field, data=data[train_trial_inds])
-                h5f.create_dataset("valid_" + field, data=data[valid_trial_inds])
-            else:
                 h5f.create_dataset(
-                    "train_" + field, data=data_batch.__dict__[field][train_trial_inds]
+                    "train_" + field, data=data[train_trial_inds], compression="gzip"
                 )
                 h5f.create_dataset(
-                    "valid_" + field, data=data_batch.__dict__[field][valid_trial_inds]
+                    "valid_" + field, data=data[valid_trial_inds], compression="gzip"
+                )
+            else:
+                h5f.create_dataset(
+                    "train_" + field,
+                    data=data_batch.__dict__[field][train_trial_inds],
+                    compression="gzip",
+                )
+                h5f.create_dataset(
+                    "valid_" + field,
+                    data=data_batch.__dict__[field][valid_trial_inds],
+                    compression="gzip",
                 )
 
 
@@ -665,6 +725,18 @@ def h5_to_dict(
         for key in h5obj.keys()
     }
     return h5_dict
+
+
+def dict_to_h5(
+    data: dict,
+    h5obj: Union[h5py.File, h5py.Group],
+):
+    for key, val in data.items():
+        if isinstance(val, dict):
+            h5group = h5obj.create_group(key)
+            dict_to_h5(val, h5group)
+        else:
+            h5obj.create_dataset(key, data=val)
 
 
 def flatten_dict_keys(d, prefix="", exclude=[]):
